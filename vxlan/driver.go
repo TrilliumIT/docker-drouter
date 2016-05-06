@@ -4,6 +4,7 @@ import (
 	gonet "net"
 	"strconv"
 	"errors"
+	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/network"
@@ -228,7 +229,7 @@ func (d *Driver) createBridge(bridgeName string, net *dockerclient.NetworkResour
 
 	if d.scope == "local" || d.global_gateway {
 		for i := range net.IPAM.Config {
-			mask := strings.Split(mask := net.IPAM.Config[i].Subnet, "/")[1]
+			mask := strings.Split(net.IPAM.Config[i].Subnet, "/")[1]
 			gatewayIP, err := netlink.ParseAddr(net.IPAM.Config[i].Gateway + "/" + mask)
 			if err != nil {
 				return nil, err
@@ -419,6 +420,7 @@ func (d *Driver) CreateNetwork(r *network.CreateNetworkRequest) error {
 	log.Debugf("Create network request: %+v", r)
 
 	// return nil and lazy create the network when a container joins it
+	// Active creation when allow_empty is enabled will be handled by watching libkv
 	return nil
 }
 
