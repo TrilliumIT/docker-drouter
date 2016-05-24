@@ -37,9 +37,9 @@ func NewDriver(scope string, vtepdev string, allow_empty bool, local_gateway boo
 		return nil, err
 	}
 
+	gateway_ns, err := netns.New()
 	if d.scope == "local" || d.local_gateway || d.globalGateway {
 		// Create p2p link from the host to inside the gateway namespace
-		gateway_ns, err := netns.New()
 		if err != nil {
 			return nil, err
 		}
@@ -512,6 +512,17 @@ func (d *Driver) createVxLan(vxlanName string, net *dockerclient.NetworkResource
 	log.Debugf("checking if gateway enabled")
 	if d.scope == "local" || ( d.local_gateway && localGateway ) || d.globalGateway {
 		// FIXME: make macvlan interface for gateway
+		// Create a macvlan link for the gateway
+		gw_macvlan := &netlink.Macvlan{
+			LinkAttrs: netlink.LinkAttrs{
+				Name:        "gw_" + vxlanName,
+				ParentIndex: vxlan.LinkAttrs.Index,
+			},
+			Mode: netlink.MACVLAN_MODE_BRIDGE,
+		}
+	if err := netlink.LinkAdd(macvlan); err != nil {
+		return nil, err
+	}
 		// FIXME: add it to the gateway namespace
 		log.Debugf("gateway is enabled")
 		for i := range net.IPAM.Config {
