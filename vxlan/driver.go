@@ -16,7 +16,7 @@ import (
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/samalba/dockerclient"
 	"github.com/vishvananda/netlink"
-	//"github.com/vishvananda/netns"
+	"github.com/vishvananda/netns"
 )
 
 type Driver struct {
@@ -27,6 +27,7 @@ type Driver struct {
 	local_gateway     bool
 	global_gateway    bool
 	networks          map[string]bool
+	gateway_ns        *netns.NsHandle,
 	docker	          *dockerclient.DockerClient
 }
 
@@ -35,6 +36,68 @@ func NewDriver(scope string, vtepdev string, allow_empty bool, local_gateway boo
 	if err != nil {
 		return nil, err
 	}
+
+	if d.scope == "local" || d.local_gateway || d.globalGateway {
+		// Create p2p link from the host to inside the gateway namespace
+		gateway_ns, err := netns.New()
+		if err != nil {
+			return nil, err
+		}
+		gateway_h, err := netlink.NewHandleAt(gateway_ns)
+		if err != nil {
+			return nil, err
+		}
+
+		gateway_link, err := netlink.LinkByName("vxlan_gw")
+		if err != nil {
+			gateway_link = &netlink.Veth{
+				LinkAttrs: netlink.LinkAttrs{Name: "vxlan_gw",
+				PeerName:  "vxlan_gw_int",
+			err = netlink.LinkAdd(gateway_link)
+			if err != nil {
+				return nil, err
+			}
+		}
+		gateway_link_ip, err := netlink.ParseAddr("172.30.255.253/30")
+		if err != nil {
+			return nil, err
+		}
+		err = netlink.AddrAdd(gateway_link, gateway_link_ip)
+		if err != nil {
+			return nil, err
+		}
+		err = netlink.LinkSetUp(gateway_link)
+		if err != nil {
+			return nil, err
+		}
+
+		gateway_link_int, err := netlink.LinkByName(gateway_link.PeerName)
+		if err != nil {
+			return nil, err
+		}
+		err = netlink.LinkSetNsFd(gateway_link_int, int(gateway_ns))
+		if err != nil {
+			return nil, err
+		}
+		// get the link again inside the namespace
+		gateway_link_int, err := gateway_h.LinkByName(gateway_link.PeerName)
+		if err != nil {
+			return nil, err
+		}
+		gateway_link_int_ip, err := netlink.ParseAddr("172.30.255.254/30")
+		if err != nil {
+			return nil, err
+		}
+		err = netlink.AddrAdd(gateway_link_int, gateway_link_int_ip)
+		if err != nil {
+			return nil, err
+		}
+		err = netlink.LinkSetUp(gateway_link_int)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	d := &Driver{
 		scope: scope,
 		vtepdev: vtepdev,
@@ -42,6 +105,7 @@ func NewDriver(scope string, vtepdev string, allow_empty bool, local_gateway boo
 		local_gateway: local_gateway,
 		global_gateway: global_gateway,
 		networks: make(map[string]bool),
+		gateway_ns: gateway_ns,
 		docker: docker,
 	}
 	if d.allow_empty {
@@ -95,6 +159,7 @@ func (d *Driver) waitForInterrupt() {
 			}
 		}
 	}
+	gateway_ns.Close()
 }
 
 func (d *Driver) eventCallBack(e *dockerclient.Event, ec chan error, args ...interface{}) error {
@@ -446,8 +511,6 @@ func (d *Driver) createVxLan(vxlanName string, net *dockerclient.NetworkResource
 
 	log.Debugf("checking if gateway enabled")
 	if d.scope == "local" || ( d.local_gateway && localGateway ) || d.globalGateway {
-		// FIXME: Make the gateway namespace if it doesn't exist
-		// FIXME: create the p2p link if it doesn't exist and add it to the gateway namespace
 		// FIXME: make macvlan interface for gateway
 		// FIXME: add it to the gateway namespace
 		log.Debugf("gateway is enabled")
