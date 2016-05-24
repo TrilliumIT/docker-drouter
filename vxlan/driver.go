@@ -178,25 +178,41 @@ func (d *Driver) eventCallBack(e *dockerclient.Event, ec chan error, args ...int
 			return err
 		}
 
+		gateway_h, err := netlink.NewHandleAt(gateway_ns)
+		if err != nil {
+			return nil, err
+		}
+
+		gateway_addrs, err := gateway_h.AddrList(nil, netlink.FAMILY_V4)
+		if err != nil {
+			return nil, err
+		}
+
 		// wait until the namespace has a default route, then add the arp entry
 		Loop:
 		for {
 			routes, _ := h.RouteList(nil, netlink.FAMILY_V4)
 			for i := range routes {
 				if routes[i].Dst == nil  {
-					// FIXME: Get the mac address from the gateway macvlan interface, and the IP from the gateway.
-					n := &netlink.Neigh{
-						IP:	net.ParseIP("10.1.128.254"),
-						HardwareAddr:	parseMAC("72:0a:11:91:9d:f4"),
-						State: netlink.NUD_PERMANENT,
+					// Get the mac address from the gateway macvlan interface, and the IP from the gateway.
+					for j := range gateway_addrs {
+						if routes[i].Gw == gateway_addrs[j].IP {
+							gw_link, err := gateway_h.LinkByName(gateway_addrs[j].Label)
+							if err != nil {
+								return nil, err
+							}
+							n := &netlink.Neigh{
+								IP:	routes[i].Gw,
+								HardwareAddr:	gw_link.HardwareAddr,
+								State: netlink.NUD_PERMANENT,
+							}
+							err := h.NeighSet(n)
+							if err != nil {
+								return nil, err
+							}
+							break Loop
+						}
 					}
-
-					// add the arp entry
-					err := h.NeighSet(n)
-					if err != nil {
-						panic(err)
-					}
-					break Loop
 				}
 			}
 			time.Sleep(10 * time.Millisecond)
@@ -512,18 +528,33 @@ func (d *Driver) createVxLan(vxlanName string, net *dockerclient.NetworkResource
 	log.Debugf("checking if gateway enabled")
 	if d.scope == "local" || ( d.local_gateway && localGateway ) || d.globalGateway {
 		// FIXME: make macvlan interface for gateway
-		// Create a macvlan link for the gateway
-		gw_macvlan := &netlink.Macvlan{
-			LinkAttrs: netlink.LinkAttrs{
-				Name:        "gw_" + vxlanName,
-				ParentIndex: vxlan.LinkAttrs.Index,
-			},
-			Mode: netlink.MACVLAN_MODE_BRIDGE,
+		gateway_h, err := netlink.NewHandleAt(gateway_ns)
+		if err != nil {
+			return nil, err
 		}
-	if err := netlink.LinkAdd(macvlan); err != nil {
-		return nil, err
-	}
-		// FIXME: add it to the gateway namespace
+
+		gateway_macvlan, err := gateway_h.LinkByName("gw_" + vxlanName)
+		if err != nil {
+			gateway_macvlan, err := netlink.LinkByName("gw_" + vxlanName)
+			if err != nil {
+				// Create a macvlan link for the gateway
+				gw_macvlan := &netlink.Macvlan{
+					LinkAttrs: netlink.LinkAttrs{
+						Name:        "gw_" + vxlanName,
+						ParentIndex: vxlan.LinkAttrs.Index,
+					},
+					Mode: netlink.MACVLAN_MODE_BRIDGE,
+				}
+				err := netlink.LinkAdd(macvlan)
+				if err != nil {
+					return nil, err
+				}
+			}
+			// add it to the namespace
+			err = netlink.LinkSetNsFd(gw_macvlan, int(d.gateway_ns))
+			gateway_macvlan, err := gateway_h.LinkByName("gw_" + vxlanName)
+		}
+
 		log.Debugf("gateway is enabled")
 		for i := range net.IPAM.Config {
 			mask := strings.Split(net.IPAM.Config[i].Subnet, "/")[1]
@@ -531,11 +562,43 @@ func (d *Driver) createVxLan(vxlanName string, net *dockerclient.NetworkResource
 			if err != nil {
 				return nil, err
 			}
-			// FIXME: if local_gateway:
-				// FIXME: sysctl arp_ignore - 8
-			// FIXME: add the ip to the macvlan interface
-			netlink.AddrAdd(vxlan, gatewayIP)
-			// FIXME: Add a route to the network via the p2p link
+			if d.scope == "local" {
+				origns, err := netns.Get()
+				if err != nil {
+					return nil, err
+				}
+				err = netns.Set(d.gateway_ns)
+				if err != nil {
+					return nil, err
+				}
+				// write sysctl to ignore arp requests
+				err := ioutil.WriteFile("/proc/sys/net/ipv4/conf/gw_" + vxlanName + "/arp_ignore", []byte(8), 0644)
+				if err != nil {
+					return nil, err
+				}
+
+				err = netns.Set(origns)
+				if err != nil {
+					return nil, err
+				}
+
+			}
+			gateway_h.AddrAdd(gateway_macvlan, gatewayIP)
+			err = gateway_h.LinkSetUp(gateway_macvlan)
+
+			p2p_link, err := netlink.LinkByName("vxlan_gw")
+			if err != nil {
+				return nil, err
+			}
+			dst, err := netlink.ParseIPNet(net.IPAM.Config[i].Subnet)
+			if err != nil {
+				return nil, err
+			}
+			route := &netlink.Route{
+				LinkIndex: p2p_link.Attrs().Index
+				Dst: dst
+				Gw: netlink.ParseAddr("172.30.255.254")
+			}
 		}
 	}
 
