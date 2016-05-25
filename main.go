@@ -4,7 +4,7 @@ import (
 	"os"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/clinta/docker-drouter/mvrouter"
+	"github.com/clinta/docker-drouter/drouter"
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/codegangsta/cli"
 )
@@ -25,7 +25,7 @@ func main() {
 	}
 	var flagAggressive = cli.BoolFlag{
 		Name:  "aggressive",
-		Usage: "Create routing interfaces for all docker networks with the macvlan-router option set, regardless of whether or not there are any containers on that network on this host.",
+		Usage: "Scan for new networks and create routing interfaces for all docker networks with the drouter option set, regardless of whether or not there are any containers on that network on this host.",
 	}
 	app := cli.NewApp()
 	app.Name = "docker-drouter"
@@ -33,11 +33,8 @@ func main() {
 	app.Version = version
 	app.Flags = []cli.Flag{
 		flagDebug,
-		flagScope,
-		flagVtepDev,
-		flagAllowEmpty,
-		flagLocalGateway,
-		flagGlobalGateway,
+		flagUseGatewayIP,
+		flagAggressive,
 	}
 	app.Action = Run
 	app.Run(os.Args)
@@ -54,15 +51,11 @@ func Run(ctx *cli.Context) {
 		DisableTimestamp: false,
 		FullTimestamp: true,
 	})
-
-	if ctx.Bool("local-gateway") && ctx.Bool("global-gateway") {
-		panic("local-gateway and global-gateway cannot both be enabled on the same host")
+	
+	if ctx.Bool("aggressive") {
+		go drouter.WatchNetworks()
 	}
 
-	d, err := vxlan.NewDriver(ctx.String("scope"), ctx.String("vtepdev"), ctx.Bool("allow-empty"), ctx.Bool("local-gateway"), ctx.Bool("global-gateway"))
-	if err != nil {
-		panic(err)
-	}
-	h := network.NewHandler(d)
-	h.ServeUnix("root", "vxlan")
+	go drouter.WatchEvents()
+
 }
