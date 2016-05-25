@@ -4,7 +4,7 @@ import (
 	"os"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/clinta/docker-macvlan-router/mvrouter"
+	"github.com/clinta/docker-drouter/mvrouter"
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/codegangsta/cli"
 )
@@ -19,31 +19,17 @@ func main() {
 		Name:  "debug, d",
 		Usage: "Enable debugging.",
 	}
-	var flagScope = cli.StringFlag{
-		Name:  "scope",
-		Value: "local",
-		Usage: "Scope of the network. local or global.",
+	var flagUseGatewayIP = cli.BoolFlag{
+		Name:  "use-gateway-ip",
+		Usage: "Use the gateway IP when creating the router interface. If this is not specified, the routing container will be assigned an address by IPAM.",
 	}
-	var flagVtepDev = cli.StringFlag{
-		Name:  "vtepdev",
-		Value: "",
-		Usage: "VTEP device.",
-	}
-	var flagAllowEmpty = cli.BoolFlag{
-		Name:  "allow-empty",
-		Usage: "Create interfaces before containers are creted, don't destroy interfaces after containers leave. The driver will poll docker every 5 seconds for new networks that may have been created on other hosts.",
-	}
-	var flagLocalGateway = cli.BoolFlag{
-		Name:  "local-gateway",
-		Usage: "Allow this host to act as a gatway for containers on the same host. The driver will create a network namespace which will hold gateway macvlan interfaces and route between them. ARP responses will be disabled on the gateway interface, allowing this feature to be enabled on multiple hosts for distributed routing. The localGateway option must be enabled for any networks where you wish to use this feature.",
-	}
-	var flagGlobalGateway = cli.BoolFlag{
-		Name:  "global-gateway",
-		Usage: "Allow this host to act as a gatway for containers on any host. The driver will create a network namespace which will hold gateway macvlan interfaces and route between them. ARP responses will be allowed on the gateway interface, so this should only be enabled on one host in the cluster. This can be used in conjunciton with localgateway to provide distributed routing for containers while allowing other devices on the vxlan network to route via the host configured as the global-gateway.",
+	var flagAggressive = cli.BoolFlag{
+		Name:  "aggressive",
+		Usage: "Create routing interfaces for all docker networks with the macvlan-router option set, regardless of whether or not there are any containers on that network on this host.",
 	}
 	app := cli.NewApp()
-	app.Name = "don"
-	app.Usage = "Docker vxLan Networking"
+	app.Name = "docker-drouter"
+	app.Usage = "Docker Distributed Router"
 	app.Version = version
 	app.Flags = []cli.Flag{
 		flagDebug,
