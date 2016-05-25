@@ -1,7 +1,7 @@
 hash: 47aa8909d98ecc92d22049225d6265d148ed4d672cb0844c29ae47a871e8008b
 updated: 2016-05-24T15:57:41.665635896-04:00
 imports:
-- name: github.com/clinta/docker-vxlan-plugin
+- name: github.com/clinta/docker-macvlan-router
   version: 588782afeaf762aa57b2f8538221ea536b2eeaac
   subpackages:
   - vxlan

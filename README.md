@@ -1,4 +1,4 @@
-docker-vxlan-plugin is a vxlan plugin for docker that enables plumbing docker containers into an existing vxlan network.
+docker-macvlan-router is a vxlan plugin for docker that enables plumbing docker containers into an existing vxlan network.
 
 ## Use Cases
 
@@ -17,7 +17,7 @@ When a container joins a network created with the vxlan driver if they don't alr
 ### Run from docker
 
 ```sh
-docker run -v /run/docker/plugins/:/run/docker/plugins -v /var/run/docker.sock:/var/run/docker.sock --privileged  --net=host clinta/docker-vxlan-plugin
+docker run -v /run/docker/plugins/:/run/docker/plugins -v /var/run/docker.sock:/var/run/docker.sock --privileged  --net=host clinta/docker-macvlan-router
 ```
 
 The plugin must be run in privileged mode with host networking to be able to add network links to the system.

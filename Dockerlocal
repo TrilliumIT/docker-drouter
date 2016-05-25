@@ -7,6 +7,6 @@ RUN apt-get -qq update && \
     apt-get -qq clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-ADD docker-vxlan-plugin /docker-vxlan-plugin
+ADD docker-macvlan-router /docker-macvlan-router
 
-ENTRYPOINT ["/docker-vxlan-plugin"]
+ENTRYPOINT ["/docker-macvlan-router"]

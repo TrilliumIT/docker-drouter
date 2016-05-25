@@ -8,7 +8,7 @@ RUN apt-get -qq update && \
     apt-get -qq clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-ADD https://github.com/clinta/docker-vxlan-plugin/releases/download/${VER}/docker-vxlan-plugin /docker-vxlan-plugin
-RUN chmod +x /docker-vxlan-plugin
+ADD https://github.com/clinta/docker-macvlan-router/releases/download/${VER}/docker-macvlan-router /docker-macvlan-router
+RUN chmod +x /docker-macvlan-router
 
-ENTRYPOINT ["/docker-vxlan-plugin"]
+ENTRYPOINT ["/docker-macvlan-router"]

@@ -32,6 +32,6 @@ else
 fi
 
 
-docker build -f ./Dockerbuild -t clinta/docker-vxlan-plugin-build:v${MAIN_VER} . && docker run clinta/docker-vxlan-plugin-build:v${MAIN_VER} cat /go/bin/docker-vxlan-plugin > docker-vxlan-plugin || exit $?
-chmod +x docker-vxlan-plugin
-docker build -f ./Dockerlocal -t clinta/docker-vxlan-plugin:v${MAIN_VER} -t clinta/docker-vxlan-plugin:${DKR_TAG} . || exit $?
+docker build -f ./Dockerbuild -t clinta/docker-macvlan-router-build:v${MAIN_VER} . && docker run clinta/docker-macvlan-router-build:v${MAIN_VER} cat /go/bin/docker-macvlan-router > docker-macvlan-router || exit $?
+chmod +x docker-macvlan-router
+docker build -f ./Dockerlocal -t clinta/docker-macvlan-router:v${MAIN_VER} -t clinta/docker-macvlan-router:${DKR_TAG} . || exit $?
