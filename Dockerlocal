@@ -2,6 +2,6 @@ FROM debian:jessie
 
 MAINTAINER Clint Armstrong <clint@clintarmstrong.net>
 
-ADD docker-macvlan-router /docker-macvlan-router
+ADD docker-drouter /docker-drouter
 
-ENTRYPOINT ["/docker-macvlan-router"]
+ENTRYPOINT ["/docker-drouter"]
