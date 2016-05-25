@@ -1,14 +1,10 @@
-hash: 47aa8909d98ecc92d22049225d6265d148ed4d672cb0844c29ae47a871e8008b
-updated: 2016-05-24T15:57:41.665635896-04:00
+hash: 91e370127b282b8c69a83247b700223ad74c80643a1847f1a09440d425a768f2
+updated: 2016-05-25T08:01:35.673823666-04:00
 imports:
-- name: github.com/clinta/docker-macvlan-router
-  version: 588782afeaf762aa57b2f8538221ea536b2eeaac
-  subpackages:
-  - vxlan
 - name: github.com/codegangsta/cli
   version: 71f57d300dd6a780ac1856c005c4b518cfd498ec
 - name: github.com/coreos/go-systemd
-  version: 1d9051fe7a349daf6dac904c0b277c3520c09368
+  version: 0dbfc1613658e2103558a7dfc62fe217255c1cb3
   subpackages:
   - activation
 - name: github.com/docker/go-connections
@@ -25,7 +21,7 @@ imports:
 - name: github.com/Microsoft/go-winio
   version: 4f1a71750d95a5a8a46c40a67ffbed8129c2f138
 - name: github.com/opencontainers/runc
-  version: aa7e27eac9b1d5d7963b816d01f22a06ed374eda
+  version: fa5ce1e2d0efe822bbb04fe9a178fdefaeba412c
   subpackages:
   - libcontainer/user
 - name: github.com/samalba/dockerclient
