@@ -4,7 +4,7 @@ import (
 	"os"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/clinta/docker-vxlan-plugin/vxlan"
+	"github.com/clinta/docker-macvlan-router/vxlan"
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/codegangsta/cli"
 )
