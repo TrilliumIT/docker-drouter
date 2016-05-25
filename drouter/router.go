@@ -22,12 +22,14 @@ import (
 )
 
 var (
-	docker         *dockerclient.DockerClient
-	self_container dockerclient.Container
-	networks       map[string]bool
-	host_ns_h        netns.NsHandle
-	self_ns_h        netns.NsHandle
-	my_pid = os.Getpid()
+	docker                *dockerclient.DockerClient
+	self_container        dockerclient.Container
+	networks              map[string]bool
+	host_ns_h             netns.NsHandle
+	self_ns_h             netns.NsHandle
+	host_route_link_index int
+	host_route_gw		    net.IP
+	my_pid                = os.Getpid()
 )
 
 func init() {
@@ -140,6 +142,11 @@ func MakeP2PLink(p2p_addr string) error {
 	if err != nil {
 		return err
 	}
+	host_link, err := host_ns_h.LinkByName("drouter_veth0")
+	if err != nil {
+		return err
+	}
+	host_route_link_index = host_link.Attrs().Index
 
 	int_link, err := host_ns_h.LinkByName("drouter_veth1")
 	if err != nil {
@@ -149,7 +156,7 @@ func MakeP2PLink(p2p_addr string) error {
 	if err != nil {
 		return err
 	}
-	int_link, err := self_ns_h.LinkByName("drouter_veth1")
+	int_link, err = self_ns_h.LinkByName("drouter_veth1")
 	if err != nil {
 		return err
 	}
@@ -172,5 +179,15 @@ func MakeP2PLink(p2p_addr string) error {
 	if err != nil {
 		return err
 	}
+	host_route_gw = int_addr
 
+	err := self_ns_h.LinkSetUp(int_link)
+	if err != nil {
+		return err
+	}
+
+	err := self_ns_h.LinkSetUp(host_link)
+	if err != nil {
+		return err
+	}
 }
