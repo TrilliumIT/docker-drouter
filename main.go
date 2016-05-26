@@ -5,7 +5,6 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/clinta/docker-drouter/drouter"
-	"github.com/docker/go-plugins-helpers/network"
 	"github.com/codegangsta/cli"
 )
 
@@ -32,8 +31,8 @@ func main() {
 		Usage: "Disable the creation of a p2p link between the host and the routing container. Use this option if you do not wish you want traffic routed between container networks but not between the host and the container",
 	}
 	var flagP2PAddr = cli.StringFlag{
-		name: "p2p-addr",
-		Value: "172.29.255.252/30"
+		Name: "p2p-addr",
+		Value: "172.29.255.252/30",
 		Usage: "The network to use for routing between the host and the container. The host will be assigned the first host address in the network, the container will be assigned the second. This is a p2p link so anything beyond a /30 is unnecessary",
 	}
 	app := cli.NewApp()
@@ -44,6 +43,8 @@ func main() {
 		flagDebug,
 		flagUseGatewayIP,
 		flagAggressive,
+		flagDisableP2P,
+		flagP2PAddr,
 	}
 	app.Action = Run
 	app.Run(os.Args)

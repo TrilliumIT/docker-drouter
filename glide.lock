@@ -1,5 +1,5 @@
 hash: a40daacba52714849a3c7c47de82ea634d066eddfe2086ae07399438b13bbacc
-updated: 2016-05-25T09:27:13.019738639-04:00
+updated: 2016-05-25T16:24:01.029000109-04:00
 imports:
 - name: github.com/codegangsta/cli
   version: 71f57d300dd6a780ac1856c005c4b518cfd498ec
@@ -21,15 +21,23 @@ imports:
 - name: github.com/Microsoft/go-winio
   version: 4f1a71750d95a5a8a46c40a67ffbed8129c2f138
 - name: github.com/opencontainers/runc
-  version: fa5ce1e2d0efe822bbb04fe9a178fdefaeba412c
+  version: 57b997243d52f70a78cfea5e31ccb69f37450b5a
   subpackages:
   - libcontainer/user
 - name: github.com/samalba/dockerclient
-  version: 91d7393ff85980ba3a8966405871a3d446ca28f2
+  version: 9d56ba7eeb4833b44f2bc2ab9a403a77cee40b6e
 - name: github.com/Sirupsen/logrus
   version: be52937128b38f1d99787bb476c789e2af1147f1
 - name: github.com/vishvananda/netlink
-  version: 2ce23437df53e7d472dc65aa23b303407d02d62e
+  version: 9b552a7a61947a9d4d8f09b70a2032a0668d07a1
+  subpackages:
+  - nl
+- name: github.com/vishvananda/netns
+  version: 8ba1072b58e0c2a240eb5f6120165c7776c3e7b8
+- name: github.com/ziutek/utils
+  version: d8fe304b0db2bae8e6709e46d19b355926c9f7fc
+  subpackages:
+  - netaddr
 - name: golang.org/x/net
   version: 0c607074acd38c5f23d1344dfe74c977464d1257
   subpackages:
