@@ -41,7 +41,7 @@ func init() {
 	}
 	self_container, err = getSelf()
 	if err != nil {
-		log.Error("Error getting self container. Is this processs running in a container?")
+		log.Error("Error getting self container. Is this processs running in a container? Is the docker socket passed through?")
 		log.Fatal(err)
 	}
 
