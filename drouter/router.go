@@ -1,9 +1,9 @@
-package mvrouter
+package drouter
 
 import (
-	//gonet "net"
-	//"strconv"
-	//"errors"
+	"net"
+	"strconv"
+	"errors"
 	//"strings"
 	//"os/exec"
 	//"fmt"
@@ -16,7 +16,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/samalba/dockerclient"
-	//"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"github.com/ziutek/utils/netaddr"
 )
@@ -25,27 +25,29 @@ var (
 	docker                *dockerclient.DockerClient
 	self_container        dockerclient.Container
 	networks              map[string]bool
-	host_ns_h             netns.NsHandle
-	self_ns_h             netns.NsHandle
+	host_ns_h             *netlink.Handle
+	self_ns_h             *netlink.Handle
 	host_route_link_index int
 	host_route_gw		    net.IP
 	my_pid                = os.Getpid()
 )
 
 func init() {
-	docker, err := dockerclient.NewDockerClient("unix:///var/run/docker.sock", nil)
+	var err error
+
+	docker, err = dockerclient.NewDockerClient("unix:///var/run/docker.sock", nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	self_container, err := getSelf()
+	self_container, err = getSelf()
 	if err != nil {
 		log.Error("Error getting self container. Is this processs running in a container?")
 		log.Fatal(err)
 	}
 
 	// Prepopulate networks that this container is a member of
-	for endpoint, settings := range self_container.NetworkSettings.Networks {
-		networks[settings.NetworkID] := true
+	for _, settings := range self_container.NetworkSettings.Networks {
+		networks[settings.NetworkID] = true
 	}
 
 	self_ns, err := netns.GetFromPid(my_pid)
@@ -53,7 +55,7 @@ func init() {
 		log.Error("Error getting self namespace.")
 		log.Fatal(err)
 	}
-	self_ns_h, err := netlink.NewHandleAt(self_ns)
+	self_ns_h, err = netlink.NewHandleAt(self_ns)
 	if err != nil {
 		log.Error("Error getting handle at self namespace.")
 		log.Fatal(err)
@@ -63,7 +65,7 @@ func init() {
 		log.Error("Error getting host namespace. Is this container running in priveleged mode?")
 		log.Fatal(err)
 	}
-	host_ns_h, err := netlink.NewHandleAt(host_ns)
+	host_ns_h, err = netlink.NewHandleAt(host_ns)
 	if err != nil {
 		log.Error("Error getting handle at host namespace.")
 		log.Fatal(err)
@@ -78,14 +80,19 @@ func WatchNetworks() {
 			log.Error(err)
 		}
 		for i := range nets {
-			if strconv.ParseBool(nets[i].Options['drouter']) && !networks.[nets[i].ID] {
-				log.Debugf(" Creating Net: %+v", nets[i])
-				_, err := joinNet(nets[i])
+			drouter, err := strconv.ParseBool(nets[i].Options["drouter"]) 
+			if err != nil {
+				log.Error(err)
+			}
+
+			if drouter && !networks[nets[i].ID] {
+				log.Debugf("Creating Net: %+v", nets[i])
+				err := joinNet(nets[i])
 				if err != nil {
 					log.Error(err)
 				}
-			} else if !strconv.ParseBool(nets[i].Options['drouter']) && networks.[nets[i].ID] {
-				_, err := leaveNet(nets[i])
+			} else if !drouter && networks[nets[i].ID] {
+				err := leaveNet(nets[i])
 				if err != nil {
 					log.Error(err)
 				}
@@ -104,26 +111,26 @@ func joinNet(net *dockerclient.NetworkResource) error {
 	if err != nil {
 		return err
 	}
-	networks[net.ID] := true
+	networks[net.ID] = true
 	return nil
 }
 
 func leaveNet(net *dockerclient.NetworkResource) error {
-	err := docker.DisconnectNetwork(net.ID, self_container.Id)
+	err := docker.DisconnectNetwork(net.ID, self_container.Id, false)
 	if err != nil {
 		return err
 	}
-	networks[net.ID] := false
+	networks[net.ID] = false
 	return nil
 }
 
-func getSelf() (dockerclient.Container error) {
-	containers, err := docker.ListContainers
+func getSelf() (dockerclient.Container, error) {
+	containers, err := docker.ListContainers(true, false, "")
 	if err != nil {
-		return err
+		return dockerclient.Container{}, err
 	}
 	for i := range containers {
-		containerInfo, err := dockerclient.InspectContainer(containers[i].Id)
+		containerInfo, err := docker.InspectContainer(containers[i].Id)
 		if err != nil {
 			log.Error(err)
 		}
@@ -131,14 +138,15 @@ func getSelf() (dockerclient.Container error) {
 			return containers[i], nil
 		}
 	}
+	return dockerclient.Container{}, errors.New("Container not found")
 }
 
 func MakeP2PLink(p2p_addr string) error {
-	host_link = &netlink.Veth{
+	host_link_veth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{Name: "drouter_veth0"},
 		PeerName:  "drouter_veth1",
 	}
-	err = host_ns_h.LinkAdd(host_link)
+	err := host_ns_h.LinkAdd(host_link_veth)
 	if err != nil {
 		return err
 	}
@@ -168,26 +176,36 @@ func MakeP2PLink(p2p_addr string) error {
 
 	host_addr := p2p_net
 	host_addr.IP = netaddr.IPAdd(host_addr.IP, 1)
-	err := host_ns_h.AddrAdd(host_link, host_addr)
+	host_netlink_addr := &netlink.Addr{ 
+		IPNet: host_addr,
+		Label: "",
+	}
+	err = host_ns_h.AddrAdd(host_link, host_netlink_addr)
 	if err != nil {
 		return err
 	}
 
 	int_addr := p2p_net
 	int_addr.IP = netaddr.IPAdd(int_addr.IP, 2)
-	err := self_ns_h.AddrAdd(int_link, int_addr)
+	int_netlink_addr := &netlink.Addr{ 
+		IPNet: int_addr,
+		Label: "",
+	}
+	err = self_ns_h.AddrAdd(int_link, int_netlink_addr)
 	if err != nil {
 		return err
 	}
-	host_route_gw = int_addr
+	host_route_gw = int_addr.IP
 
-	err := self_ns_h.LinkSetUp(int_link)
+	err = self_ns_h.LinkSetUp(int_link)
 	if err != nil {
 		return err
 	}
 
-	err := self_ns_h.LinkSetUp(host_link)
+	err = self_ns_h.LinkSetUp(host_link)
 	if err != nil {
 		return err
 	}
+
+	return nil
 }
