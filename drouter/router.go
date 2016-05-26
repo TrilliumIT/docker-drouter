@@ -4,12 +4,12 @@ import (
 	"net"
 	"strconv"
 	"errors"
-	//"strings"
+	"strings"
 	//"os/exec"
 	//"fmt"
 	"time"
 	"os"
-	"buffio"
+	"bufio"
 	//"os/signal"
 	//"syscall"
 	//"bytes"
@@ -74,17 +74,22 @@ func init() {
 }
 
 // Loop to watch for new networks created and create interfaces when needed
-func WatchNetworks() {
+func WatchNetworks(wg *sync.WaitGroup) {
+	log.Info("Watching Networks")
 	for {
 		nets, err := docker.ListNetworks("")
 		if err != nil {
 			log.Error(err)
 		}
 		for i := range nets {
-			drouter, err := strconv.ParseBool(nets[i].Options["drouter"]) 
-			if err != nil {
-				log.Error(err)
-			}
+			drouter_str := nets[i].Options["drouter"]
+			drouter := false
+			if drouter_str != "" {
+				drouter, err = strconv.ParseBool(drouter_str) 
+				if err != nil {
+					log.Error(err)
+				}
+			} 
 
 			if drouter && !networks[nets[i].ID] {
 				log.Debugf("Creating Net: %+v", nets[i])
@@ -104,7 +109,9 @@ func WatchNetworks() {
 }
 
 func WatchEvents() {
-	//FIXME
+	for {
+		time.Sleep(1 * time.Second)
+	}
 }
 
 func joinNet(net *dockerclient.NetworkResource) error {
@@ -128,11 +135,11 @@ func leaveNet(net *dockerclient.NetworkResource) error {
 func getSelf() (dockerclient.ContainerInfo, error) {
 	cgroup, err := os.Open("/proc/self/cgroup")
 	if err != nil {
-		return dockerclient.Container{}, err
+		return dockerclient.ContainerInfo{}, err
 	}
 	defer cgroup.Close()
 
-	scanner := buffio.NewScanner(cgroup)
+	scanner := bufio.NewScanner(cgroup)
 	for scanner.Scan() {
 		line := strings.Split(scanner.Text(), "/")
 		id := line[len(line) - 1]
@@ -141,9 +148,9 @@ func getSelf() (dockerclient.ContainerInfo, error) {
 			log.Warn(err)
 			continue
 		}
-		return containerInfo
+		return *containerInfo, nil
 	}
-	return dockerclient.Container{}, errors.New("Container not found")
+	return dockerclient.ContainerInfo{}, errors.New("Container not found")
 }
 
 func MakeP2PLink(p2p_addr string) error {

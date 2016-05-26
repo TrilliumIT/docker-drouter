@@ -6,6 +6,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/clinta/docker-drouter/drouter"
 	"github.com/codegangsta/cli"
+	"time"
 )
 
 const (
@@ -52,17 +53,17 @@ func main() {
 
 // Run initializes the driver
 func Run(ctx *cli.Context) {
-	log.Info("debug logging: %+v", ctx.Bool("debug"))
+	log.SetFormatter(&log.TextFormatter{
+		//ForceColors: false,
+		//DisableColors: true,
+		DisableTimestamp: false,
+		FullTimestamp: true,
+	})
+
 	if ctx.Bool("debug") {
 		log.SetLevel(log.DebugLevel)
 		log.Info("Debug logging enabled")
 	}
-	log.SetFormatter(&log.TextFormatter{
-		ForceColors: false,
-		DisableColors: true,
-		DisableTimestamp: false,
-		FullTimestamp: true,
-	})
 
 	if !ctx.Bool("disable-p2p") {
 		err := drouter.MakeP2PLink(ctx.String("p2p-addr"))
@@ -71,11 +72,11 @@ func Run(ctx *cli.Context) {
 			log.Fatal(err)
 		}
 	}
-	
+
 	if ctx.Bool("aggressive") {
+		log.Info("Aggressive mode enabled")
 		go drouter.WatchNetworks()
 	}
 
-	go drouter.WatchEvents()
-
+	drouter.WatchEvents()
 }
