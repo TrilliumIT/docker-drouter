@@ -1,35 +1,20 @@
 hash: a40daacba52714849a3c7c47de82ea634d066eddfe2086ae07399438b13bbacc
-updated: 2016-05-25T16:24:01.029000109-04:00
+updated: 2016-05-26T13:57:08.953069395-04:00
 imports:
 - name: github.com/codegangsta/cli
   version: 71f57d300dd6a780ac1856c005c4b518cfd498ec
-- name: github.com/coreos/go-systemd
-  version: 0dbfc1613658e2103558a7dfc62fe217255c1cb3
-  subpackages:
-  - activation
-- name: github.com/docker/go-connections
-  version: c7838b258fbfa3fe88eecfb2a0e08ea0dbd6a646
-  subpackages:
-  - sockets
 - name: github.com/docker/go-plugins-helpers
   version: 94650054f38b80ab066a72e945a9e7553c292ff1
   subpackages:
   - network
-  - sdk
 - name: github.com/docker/go-units
   version: 09dda9d4b0d748c57c14048906d3d094a58ec0c9
-- name: github.com/Microsoft/go-winio
-  version: 4f1a71750d95a5a8a46c40a67ffbed8129c2f138
-- name: github.com/opencontainers/runc
-  version: 57b997243d52f70a78cfea5e31ccb69f37450b5a
-  subpackages:
-  - libcontainer/user
 - name: github.com/samalba/dockerclient
   version: 9d56ba7eeb4833b44f2bc2ab9a403a77cee40b6e
 - name: github.com/Sirupsen/logrus
   version: be52937128b38f1d99787bb476c789e2af1147f1
 - name: github.com/vishvananda/netlink
-  version: 9b552a7a61947a9d4d8f09b70a2032a0668d07a1
+  version: e299ab1a585b04a7e7d4d2f609f241b69ca7d326
   subpackages:
   - nl
 - name: github.com/vishvananda/netns
@@ -38,13 +23,8 @@ imports:
   version: d8fe304b0db2bae8e6709e46d19b355926c9f7fc
   subpackages:
   - netaddr
-- name: golang.org/x/net
-  version: 0c607074acd38c5f23d1344dfe74c977464d1257
-  subpackages:
-  - proxy
 - name: golang.org/x/sys
   version: d4feaf1a7e61e1d9e79e6c4e76c6349e9cab0a03
   subpackages:
   - unix
-  - windows
 devImports: []

@@ -9,6 +9,7 @@ import (
 	//"fmt"
 	"time"
 	"os"
+	"buffio"
 	//"os/signal"
 	//"syscall"
 	//"bytes"
@@ -23,7 +24,7 @@ import (
 
 var (
 	docker                *dockerclient.DockerClient
-	self_container        dockerclient.Container
+	self_container        dockerclient.ContainerInfo
 	networks              map[string]bool
 	host_ns_h             *netlink.Handle
 	self_ns_h             *netlink.Handle
@@ -124,19 +125,23 @@ func leaveNet(net *dockerclient.NetworkResource) error {
 	return nil
 }
 
-func getSelf() (dockerclient.Container, error) {
-	containers, err := docker.ListContainers(true, false, "")
+func getSelf() (dockerclient.ContainerInfo, error) {
+	cgroup, err := os.Open("/proc/self/cgroup")
 	if err != nil {
 		return dockerclient.Container{}, err
 	}
-	for i := range containers {
-		containerInfo, err := docker.InspectContainer(containers[i].Id)
+	defer cgroup.Close()
+
+	scanner := buffio.NewScanner(cgroup)
+	for scanner.Scan() {
+		line := strings.Split(scanner.Text(), "/")
+		id := line[len(line) - 1]
+		containerInfo, err := docker.InspectContainer(id)
 		if err != nil {
-			log.Error(err)
+			log.Warn(err)
+			continue
 		}
-		if containerInfo.State.Pid == my_pid {
-			return containers[i], nil
-		}
+		return containerInfo
 	}
 	return dockerclient.Container{}, errors.New("Container not found")
 }

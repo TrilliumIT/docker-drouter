@@ -52,8 +52,10 @@ func main() {
 
 // Run initializes the driver
 func Run(ctx *cli.Context) {
+	log.Info("debug logging: %+v", ctx.Bool("debug"))
 	if ctx.Bool("debug") {
 		log.SetLevel(log.DebugLevel)
+		log.Info("Debug logging enabled")
 	}
 	log.SetFormatter(&log.TextFormatter{
 		ForceColors: false,
