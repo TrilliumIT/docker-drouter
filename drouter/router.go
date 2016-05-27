@@ -16,14 +16,18 @@ import (
 	//"io/ioutil"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/samalba/dockerclient"
+	//"github.com/samalba/dockerclient"
+	dockerclient "github.com/docker/engine-api/client"
+	dockertypes "github.com/docker/engine-api/types"
+	dockerfilters "github.com/docker/engine-api/types/filters"
+	"golang.org/x/net/context"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"github.com/ziutek/utils/netaddr"
 )
 
 var (
-	docker                *dockerclient.DockerClient
+	docker                *dockerclient.Client
 	self_container        dockerclient.ContainerInfo
 	networks              map[string]bool
 	host_ns_h             *netlink.Handle
@@ -36,7 +40,8 @@ var (
 func init() {
 	var err error
 
-	docker, err = dockerclient.NewDockerClient("unix:///var/run/docker.sock", nil)
+	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
+	docker, err = dockerclient.NewClient("unix:///var/run/docker.sock", "v1.22", defaultHeaders)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -81,7 +86,7 @@ func init() {
 func WatchNetworks() {
 	log.Info("Watching Networks")
 	for {
-		nets, err := docker.ListNetworks("")
+		nets, err := docker.NetworkList(context.Background(), types.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
 		if err != nil {
 			log.Error(err)
 		}
@@ -120,8 +125,8 @@ func WatchEvents() {
 	}
 }
 
-func joinNet(net *dockerclient.NetworkResource) error {
-	err := docker.ConnectNetwork(net.ID, self_container.Id)
+func joinNet(net *dockertypes.NetworkResource) error {
+	err := docker.NetworkConnect(context.Background(), net.ID, self_container.Id)
 	if err != nil {
 		return err
 	}
@@ -129,8 +134,8 @@ func joinNet(net *dockerclient.NetworkResource) error {
 	return nil
 }
 
-func leaveNet(net *dockerclient.NetworkResource) error {
-	err := docker.DisconnectNetwork(net.ID, self_container.Id, false)
+func leaveNet(net *dockertypes.NetworkResource) error {
+	err := docker.NetworkDisconnect(context.Background(), net.ID, self_container.Id, true)
 	if err != nil {
 		return err
 	}
@@ -138,10 +143,10 @@ func leaveNet(net *dockerclient.NetworkResource) error {
 	return nil
 }
 
-func getSelf() (dockerclient.ContainerInfo, error) {
+func getSelf() (dockertypes.ContainerJSON, error) {
 	cgroup, err := os.Open("/proc/self/cgroup")
 	if err != nil {
-		return dockerclient.ContainerInfo{}, err
+		return dockertypes.ContainerJSON{}, err
 	}
 	defer cgroup.Close()
 
@@ -149,14 +154,14 @@ func getSelf() (dockerclient.ContainerInfo, error) {
 	for scanner.Scan() {
 		line := strings.Split(scanner.Text(), "/")
 		id := line[len(line) - 1]
-		containerInfo, err := docker.InspectContainer(id)
+		container, err := docker.ContainerInspect(context.Background(), id)
 		if err != nil {
 			log.Warn(err)
 			continue
 		}
 		return *containerInfo, nil
 	}
-	return dockerclient.ContainerInfo{}, errors.New("Container not found")
+	return dockerclient.ContainerJSON{}, errors.New("Container not found")
 }
 
 func MakeP2PLink(p2p_addr string) error {
