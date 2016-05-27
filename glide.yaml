@@ -1,12 +1,20 @@
-package: github.com/clinta/docker-vxlan-plugin
+package: github.com/clinta/docker-drouter
 import:
 - package: github.com/Sirupsen/logrus
   version: v0.9.0
 - package: github.com/codegangsta/cli
   version: ~1.14.0
-- package: github.com/docker/go-plugins-helpers
-  version: 94650054f38b80ab066a72e945a9e7553c292ff1
+- package: github.com/docker/engine-api
   subpackages:
-  - network
-- package: github.com/samalba/dockerclient
+  - client
+  - types
+  - types/filters
+  - types/networks
 - package: github.com/vishvananda/netlink
+- package: github.com/vishvananda/netns
+- package: github.com/ziutek/utils
+  subpackages:
+  - netaddr
+- package: golang.org/x/net
+  subpackages:
+  - context

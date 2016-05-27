@@ -10,7 +10,7 @@ RUN set -xe && \
     mv /tmp/glide /usr/local/bin/ && \
     rm -rf /tmp/*
 
-ENV SRC_ROOT /go/src/github.com/clinta/docker-vxlan-plugin 
+ENV SRC_ROOT /go/src/github.com/clinta/docker-drouter 
 
 # Setup our directory and give convenient path via ln.
 RUN mkdir -p ${SRC_ROOT}
