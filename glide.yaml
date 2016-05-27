@@ -9,6 +9,7 @@ import:
   - client
   - types
   - types/filters
+  - types/networks
 - package: github.com/vishvananda/netlink
 - package: github.com/vishvananda/netns
 - package: github.com/ziutek/utils

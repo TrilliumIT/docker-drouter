@@ -1,5 +1,5 @@
-hash: 5928eba8f08fd81257a9d35a38385382ead64793e340743f265adbe13d2a3968
-updated: 2016-05-27T08:22:00.538342205-04:00
+hash: b92bd0ddc710b78b799cb2be7ec5a0d91dc1827f5341135b25fa440d1d6cdc04
+updated: 2016-05-27T08:31:57.557676135-04:00
 imports:
 - name: github.com/codegangsta/cli
   version: 71f57d300dd6a780ac1856c005c4b518cfd498ec
@@ -14,6 +14,7 @@ imports:
   - client
   - types
   - types/filters
+  - types/networks
   - client/transport
   - client/transport/cancellable
   - types/container
