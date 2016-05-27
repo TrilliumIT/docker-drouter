@@ -85,7 +85,7 @@ func init() {
 }
 
 // Loop to watch for new networks created and create interfaces when needed
-func WatchNetworks() {
+func WatchNetworks(use-gateway-ip bool) {
 	log.Info("Watching Networks")
 	for {
 		nets, err := docker.NetworkList(context.Background(), dockertypes.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
@@ -106,7 +106,7 @@ func WatchNetworks() {
 
 			if drouter && !networks[nets[i].ID] {
 				log.Debugf("Joining Net: %+v", nets[i])
-				err := joinNet(&nets[i])
+				err := joinNet(&nets[i], use-gateway-ip)
 				if err != nil {
 					log.Errorf("Error joining network: %v", nets[i])
 					log.Error(err)
@@ -130,8 +130,14 @@ func WatchEvents() {
 	}
 }
 
-func joinNet(n *dockertypes.NetworkResource) error {
-	err := docker.NetworkConnect(context.Background(), n.ID, self_container.ID, &dockernetworks.EndpointSettings{})
+func joinNet(n *dockertypes.NetworkResource, use-gateway-ip bool) error {
+	endpointSettings := &dockernetworks.EndpointSettings{}
+	if use-gateway-ip {
+		endpointSettings.IPAddress = n.IPAM.Config[0].Gateway
+		//FIXME: Add additional gateways as aliases
+	}
+
+	err := docker.NetworkConnect(context.Background(), n.ID, self_container.ID, endpointSettings)
 	if err != nil {
 		return err
 	}

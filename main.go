@@ -87,7 +87,7 @@ func Run(ctx *cli.Context) {
 
 	if ctx.Bool("aggressive") {
 		log.Info("Aggressive mode enabled")
-		go drouter.WatchNetworks()
+		go drouter.WatchNetworks(ctx.Bool("use-gateway-ip"))
 	}
 
 	drouter.WatchEvents()
