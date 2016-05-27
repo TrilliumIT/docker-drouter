@@ -129,7 +129,13 @@ func WatchNetworks(IPOffset int) {
 
 func WatchEvents() {
 	errChan := events.Monitor(context.Background(), docker, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
-		log.Infof("Event: %v", event)
+		log.Debugf("Event: %v", event)
+		log.Debugf("Event.Status: %v", event.Status)
+		log.Debugf("Event.ID: %v", event.ID)
+		log.Debugf("Event.From: %v", event.From)
+		log.Debugf("Event.Type: %v", event.Type)
+		log.Debugf("Event.Action: %v", event.Action)
+		log.Debugf("Event.Actor: %v", event.Actor)
 })
 	if err := <-errChan; err != nil {
 		log.Error(err)
