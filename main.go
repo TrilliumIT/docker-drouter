@@ -31,9 +31,10 @@ func main() {
 		Name:  "debug, d",
 		Usage: "Enable debugging.",
 	}
-	var flagUseGatewayIP = cli.BoolFlag{
-		Name:  "use-gateway-ip",
-		Usage: "Use the gateway IP when creating the router interface. If this is not specified, the routing container will be assigned an address by IPAM.",
+	var flagIPOffset = cli.IntFlag{
+		Name:  "ip-offset",
+		Value: 0,
+		Usage: "An int to indicate which IP the router should be given. A value of 1 will use the first IP address in the network. A value of -1 will used the last IP in the network. The default (0) will allow the IPAM driver to choose an arbitrary IP.",
 	}
 	var flagAggressive = cli.BoolFlag{
 		Name:  "aggressive",
@@ -54,7 +55,7 @@ func main() {
 	app.Version = version
 	app.Flags = []cli.Flag{
 		flagDebug,
-		flagUseGatewayIP,
+		flagIPOffset,
 		flagAggressive,
 		flagDisableP2P,
 		flagP2PAddr,
@@ -87,7 +88,7 @@ func Run(ctx *cli.Context) {
 
 	if ctx.Bool("aggressive") {
 		log.Info("Aggressive mode enabled")
-		go drouter.WatchNetworks(ctx.Bool("use-gateway-ip"))
+		go drouter.WatchNetworks(ctx.Int("ip-offset"))
 	}
 
 	drouter.WatchEvents()

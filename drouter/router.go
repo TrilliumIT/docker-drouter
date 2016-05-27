@@ -85,7 +85,7 @@ func init() {
 }
 
 // Loop to watch for new networks created and create interfaces when needed
-func WatchNetworks(useGatewayIP bool) {
+func WatchNetworks(IPOffset int) {
 	log.Info("Watching Networks")
 	for {
 		nets, err := docker.NetworkList(context.Background(), dockertypes.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
@@ -106,7 +106,7 @@ func WatchNetworks(useGatewayIP bool) {
 
 			if drouter && !networks[nets[i].ID] {
 				log.Debugf("Joining Net: %+v", nets[i])
-				err := joinNet(&nets[i], useGatewayIP)
+				err := joinNet(&nets[i], IPOffset)
 				if err != nil {
 					log.Errorf("Error joining network: %v", nets[i])
 					log.Error(err)
@@ -130,16 +130,27 @@ func WatchEvents() {
 	}
 }
 
-func joinNet(n *dockertypes.NetworkResource, useGatewayIP bool) error {
+func joinNet(n *dockertypes.NetworkResource, IPOffset int) error {
 	endpointSettings := &dockernetworks.EndpointSettings{}
-	if useGatewayIP {
-		log.Debugf("use-gateway-ip configured")
+	if IPOffset != 0 {
+		log.Debugf("ip-offset configured")
+		_, subnet, err := net.ParseCIDR(n.IPAM.Config[0].Subnet)
+		var ip net.IP
+		if IPOffset > 0 {
+			ip = netaddr.IPAdd(subnet.IP, IPOffset)
+		} else {
+			last := ipaddress.LastAddress(subnet)
+			ip = netaddr.IPAdd(LastAddress, IPOffset)
+		}
 		log.Debugf("Setting IP to %v", n.IPAM.Config[0].Gateway)
-		endpointSettings.IPAddress = n.IPAM.Config[0].Gateway
+		endpointSettings.IPAddress = ip.String()
 		endpointSettings.IPAMConfig = &dockernetworks.EndpointIPAMConfig{
-			IPv4Address: n.IPAM.Config[0].Gateway,
+			IPv4Address: ip.String(),
 		}
 		//FIXME: Add additional gateways as aliases
+		//for i := range n.IPAM.Config[1:] {
+		//	ipamconfig := n.IPAM.Config[i]
+		//}
 	}
 
 	err := docker.NetworkConnect(context.Background(), n.ID, self_container.ID, endpointSettings)
