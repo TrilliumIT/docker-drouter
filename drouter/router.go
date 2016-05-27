@@ -133,7 +133,12 @@ func WatchEvents() {
 func joinNet(n *dockertypes.NetworkResource, useGatewayIP bool) error {
 	endpointSettings := &dockernetworks.EndpointSettings{}
 	if useGatewayIP {
+		log.Debugf("use-gateway-ip configured")
+		log.Debugf("Setting IP to %v", n.IPAM.Config[0].Gateway)
 		endpointSettings.IPAddress = n.IPAM.Config[0].Gateway
+		endpointSettings.IPAMConfig = &dockernetworks.EndpointIPAMConfig{
+			IPv4Address: n.IPAM.Config[0].Gateway,
+		}
 		//FIXME: Add additional gateways as aliases
 	}
 
