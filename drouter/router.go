@@ -48,6 +48,7 @@ func init() {
 	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
 	docker, err = dockerclient.NewClient("unix:///var/run/docker.sock", "v1.22", nil, defaultHeaders)
 	if err != nil {
+		log.Error("Error connecting to docker socket")
 		log.Fatal(err)
 	}
 	self_container, err = getSelf()
@@ -57,13 +58,9 @@ func init() {
 	}
 
 	// Prepopulate networks that this container is a member of
-	log.Infof("Self_container-info: %v", self_container)
-	log.Infof("Self_container-info.networksettings.networks: %v", self_container.NetworkSettings.Networks)
 	for _, settings := range self_container.NetworkSettings.Networks {
 		networks[settings.NetworkID] = true
 	}
-
-	log.Infof("Member networks on startup: %v", networks)
 
 	self_ns, err := netns.Get()
 	if err != nil {
@@ -93,15 +90,16 @@ func WatchNetworks() {
 	for {
 		nets, err := docker.NetworkList(context.Background(), dockertypes.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
 		if err != nil {
+			log.Error("Error getting network list")
 			log.Error(err)
 		}
 		for i := range nets {
-			//log.Debugf("Checking network %v", nets[i])
 			drouter_str := nets[i].Options["drouter"]
 			drouter := false
 			if drouter_str != "" {
 				drouter, err = strconv.ParseBool(drouter_str) 
 				if err != nil {
+					log.Errorf("Error parsing drouter option: %v", drouter_str)
 					log.Error(err)
 				}
 			} 
@@ -110,12 +108,14 @@ func WatchNetworks() {
 				log.Debugf("Creating Net: %+v", nets[i])
 				err := joinNet(&nets[i])
 				if err != nil {
+					log.Errorf("Error joining network: %v", nets[i])
 					log.Error(err)
 				}
 			} else if !drouter && networks[nets[i].ID] {
 				log.Debugf("Leaving Net: %+v", nets[i])
 				err := leaveNet(&nets[i])
 				if err != nil {
+					log.Errorf("Error leaving network: %v", nets[i])
 					log.Error(err)
 				}
 			}
@@ -161,24 +161,13 @@ func getSelf() (dockertypes.ContainerJSON, error) {
 		id := line[len(line) - 1]
 		containerInfo, err := docker.ContainerInspect(context.Background(), id)
 		if err != nil {
+			log.Warnf("Error inspecting container: %v", id)
 			log.Warn(err)
 			continue
 		}
 		return containerInfo, nil
 	}
 	return dockertypes.ContainerJSON{}, errors.New("Container not found")
-}
-
-func Cleanup() error {
-	return removeP2PLink()
-}
-
-func removeP2PLink() error {
-	host_link, err := host_ns_h.LinkByName("drouter_veth0")
-	if err != nil {
-		return err
-	}
-	return host_ns_h.LinkDel(host_link)
 }
 
 func MakeP2PLink(p2p_addr string) error {
@@ -250,3 +239,17 @@ func MakeP2PLink(p2p_addr string) error {
 
 	return nil
 }
+
+func Cleanup() error {
+	log.Info("Cleaning Up")
+	return removeP2PLink()
+}
+
+func removeP2PLink() error {
+	host_link, err := host_ns_h.LinkByName("drouter_veth0")
+	if err != nil {
+		return err
+	}
+	return host_ns_h.LinkDel(host_link)
+}
+
