@@ -1,5 +1,5 @@
-hash: b92bd0ddc710b78b799cb2be7ec5a0d91dc1827f5341135b25fa440d1d6cdc04
-updated: 2016-05-27T08:31:57.557676135-04:00
+hash: 187915981e84d9639f149a0c68b91b2cf14deff20736f4d08de740d2a005fa09
+updated: 2016-05-27T14:32:46.018745532-04:00
 imports:
 - name: github.com/codegangsta/cli
   version: 71f57d300dd6a780ac1856c005c4b518cfd498ec
@@ -15,10 +15,10 @@ imports:
   - types
   - types/filters
   - types/networks
+  - types/network
   - client/transport
   - client/transport/cancellable
   - types/container
-  - types/network
   - types/reference
   - types/registry
   - types/time
@@ -33,6 +33,8 @@ imports:
   - nat
 - name: github.com/docker/go-units
   version: 09dda9d4b0d748c57c14048906d3d094a58ec0c9
+- name: github.com/llimllib/ipaddress
+  version: 2154bde6c1739cd49c475abbcc82e3f4ff257e5e
 - name: github.com/Microsoft/go-winio
   version: 4f1a71750d95a5a8a46c40a67ffbed8129c2f138
 - name: github.com/opencontainers/runc

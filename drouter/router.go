@@ -25,6 +25,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"github.com/ziutek/utils/netaddr"
+	"github.com/llimllib/ipaddress"
 )
 
 var (
@@ -85,7 +86,7 @@ func init() {
 }
 
 // Loop to watch for new networks created and create interfaces when needed
-func WatchNetworks() {
+func WatchNetworks(IPOffset int) {
 	log.Info("Watching Networks")
 	for {
 		nets, err := docker.NetworkList(context.Background(), dockertypes.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
@@ -106,7 +107,7 @@ func WatchNetworks() {
 
 			if drouter && !networks[nets[i].ID] {
 				log.Debugf("Joining Net: %+v", nets[i])
-				err := joinNet(&nets[i])
+				err := joinNet(&nets[i], IPOffset)
 				if err != nil {
 					log.Errorf("Error joining network: %v", nets[i])
 					log.Error(err)
@@ -130,8 +131,36 @@ func WatchEvents() {
 	}
 }
 
-func joinNet(n *dockertypes.NetworkResource) error {
-	err := docker.NetworkConnect(context.Background(), n.ID, self_container.ID, &dockernetworks.EndpointSettings{})
+func joinNet(n *dockertypes.NetworkResource, IPOffset int) error {
+	endpointSettings := &dockernetworks.EndpointSettings{}
+	if IPOffset != 0 {
+		for i := range n.IPAM.Config {
+			ipamconfig := n.IPAM.Config[i]
+			log.Debugf("ip-offset configured")
+			_, subnet, err := net.ParseCIDR(ipamconfig.Subnet)
+			if err != nil {
+				return err
+			}
+			var ip net.IP
+			if IPOffset > 0 {
+				ip = netaddr.IPAdd(subnet.IP, IPOffset)
+			} else {
+				last := ipaddress.LastAddress(subnet)
+				ip = netaddr.IPAdd(last, IPOffset)
+			}
+			log.Debugf("Setting IP to %v", ip)
+			if endpointSettings.IPAddress == "" {
+				endpointSettings.IPAddress = ip.String()
+				endpointSettings.IPAMConfig =&dockernetworks.EndpointIPAMConfig{
+					IPv4Address: ip.String(),
+				}
+			} else {
+				endpointSettings.Aliases = append(endpointSettings.Aliases, ip.String())
+			}
+		}
+	}
+
+	err := docker.NetworkConnect(context.Background(), n.ID, self_container.ID, endpointSettings)
 	if err != nil {
 		return err
 	}
