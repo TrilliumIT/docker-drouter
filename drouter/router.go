@@ -136,18 +136,21 @@ func joinNet(n *dockertypes.NetworkResource) error {
 		return err
 	}
 	networks[n.ID] = true
-	_, dst, err := net.ParseCIDR(n.IPAM.Config.Subnet)
-	if err != nil {
-		return err
-	}
-	route := &netlink.Route{
-		LinkIndex: host_route_link_index,
-		Gw: host_route_gw,
-		Dst: dst,
-	}
-	err = host_ns_h.RouteAdd(route)
-	if err != nil {
-		return err
+	for i := range n.IPAM.Config {
+		ipamconfig := n.IPAM.Config[i]
+		_, dst, err := net.ParseCIDR(ipamconfig.Subnet)
+		if err != nil {
+			return err
+		}
+		route := &netlink.Route{
+			LinkIndex: host_route_link_index,
+			Gw: host_route_gw,
+			Dst: dst,
+		}
+		err = host_ns_h.RouteAdd(route)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
