@@ -46,7 +46,7 @@ func init() {
 	}
 
 	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
-	docker, err = dockerclient.NewClient("unix:///var/run/docker.sock", "v1.22", nil, defaultHeaders)
+	docker, err = dockerclient.NewClient("unix:///var/run/docker.sock", "v1.23", nil, defaultHeaders)
 	if err != nil {
 		log.Error("Error connecting to docker socket")
 		log.Fatal(err)
@@ -105,7 +105,7 @@ func WatchNetworks() {
 			} 
 
 			if drouter && !networks[nets[i].ID] {
-				log.Debugf("Creating Net: %+v", nets[i])
+				log.Debugf("Joining Net: %+v", nets[i])
 				err := joinNet(&nets[i])
 				if err != nil {
 					log.Errorf("Error joining network: %v", nets[i])
