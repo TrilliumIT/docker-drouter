@@ -41,6 +41,10 @@ var (
 func init() {
 	var err error
 
+	if my_pid == 1 {
+		log.Fatal("Running as Pid 1. drouter must be run with --pid=host")
+	}
+
 	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
 	docker, err = dockerclient.NewClient("unix:///var/run/docker.sock", "v1.22", nil, defaultHeaders)
 	if err != nil {
