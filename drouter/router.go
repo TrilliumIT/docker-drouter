@@ -25,6 +25,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"github.com/ziutek/utils/netaddr"
+	"github.com/llimllib/ipaddress"
 )
 
 var (
@@ -133,24 +134,30 @@ func WatchEvents() {
 func joinNet(n *dockertypes.NetworkResource, IPOffset int) error {
 	endpointSettings := &dockernetworks.EndpointSettings{}
 	if IPOffset != 0 {
-		log.Debugf("ip-offset configured")
-		_, subnet, err := net.ParseCIDR(n.IPAM.Config[0].Subnet)
-		var ip net.IP
-		if IPOffset > 0 {
-			ip = netaddr.IPAdd(subnet.IP, IPOffset)
-		} else {
-			last := ipaddress.LastAddress(subnet)
-			ip = netaddr.IPAdd(LastAddress, IPOffset)
+		for i := range n.IPAM.Config {
+			ipamconfig := n.IPAM.Config[i]
+			log.Debugf("ip-offset configured")
+			_, subnet, err := net.ParseCIDR(ipamconfig.Subnet)
+			if err != nil {
+				return err
+			}
+			var ip net.IP
+			if IPOffset > 0 {
+				ip = netaddr.IPAdd(subnet.IP, IPOffset)
+			} else {
+				last := ipaddress.LastAddress(subnet)
+				ip = netaddr.IPAdd(last, IPOffset)
+			}
+			log.Debugf("Setting IP to %v", ip)
+			if endpointSettings.IPAddress == "" {
+				endpointSettings.IPAddress = ip.String()
+				endpointSettings.IPAMConfig =&dockernetworks.EndpointIPAMConfig{
+					IPv4Address: ip.String(),
+				}
+			} else {
+				endpointSettings.Aliases = append(endpointSettings.Aliases, ip.String())
+			}
 		}
-		log.Debugf("Setting IP to %v", n.IPAM.Config[0].Gateway)
-		endpointSettings.IPAddress = ip.String()
-		endpointSettings.IPAMConfig = &dockernetworks.EndpointIPAMConfig{
-			IPv4Address: ip.String(),
-		}
-		//FIXME: Add additional gateways as aliases
-		//for i := range n.IPAM.Config[1:] {
-		//	ipamconfig := n.IPAM.Config[i]
-		//}
 	}
 
 	err := docker.NetworkConnect(context.Background(), n.ID, self_container.ID, endpointSettings)
