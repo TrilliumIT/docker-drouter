@@ -33,7 +33,7 @@ import (
 var (
 	docker                *dockerclient.Client
 	self_container        dockertypes.ContainerJSON
-	networks              = make(map[string]bool)
+	networks              = make(map[string]net.IP)
 	host_ns_h             *netlink.Handle
 	self_ns_h             *netlink.Handle
 	host_route_link_index int
@@ -62,7 +62,7 @@ func init() {
 
 	// Prepopulate networks that this container is a member of
 	for _, settings := range self_container.NetworkSettings.Networks {
-		networks[settings.NetworkID] = true
+		networks[settings.NetworkID] = net.ParseIP(settings.IPAMConfig[0].IPv4Address)
 	}
 
 	self_ns, err := netns.Get()
@@ -129,14 +129,15 @@ func WatchNetworks(IPOffset int) {
 
 func WatchEvents() {
 	errChan := events.Monitor(context.Background(), docker, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
-		log.Debugf("Event: %v", event)
-		log.Debugf("Event.Status: %v", event.Status)
-		log.Debugf("Event.ID: %v", event.ID)
-		log.Debugf("Event.From: %v", event.From)
-		log.Debugf("Event.Type: %v", event.Type)
-		log.Debugf("Event.Action: %v", event.Action)
+		if event.Type != "network" { return }
+		if event.Action != "connect" { return }
+		// don't run on self events
+		if event.Actor.Attributes["container"] == self_container.ID { return }
+		// don't run if this network is not being managed
+		if !networks[event.Actor.ID] { return }
+
 		log.Debugf("Event.Actor: %v", event.Actor)
-})
+	})
 	if err := <-errChan; err != nil {
 		log.Error(err)
 	}
