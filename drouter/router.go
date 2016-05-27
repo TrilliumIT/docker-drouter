@@ -130,13 +130,13 @@ func WatchEvents() {
 	}
 }
 
-func joinNet(net *dockertypes.NetworkResource) error {
-	err := docker.NetworkConnect(context.Background(), net.ID, self_container.ID, &dockernetworks.EndpointSettings{})
+func joinNet(n *dockertypes.NetworkResource) error {
+	err := docker.NetworkConnect(context.Background(), n.ID, self_container.ID, &dockernetworks.EndpointSettings{})
 	if err != nil {
 		return err
 	}
-	networks[net.ID] = true
-	_, dst, err := net.ParseCIDR(net.IPAM.Config.Subnet)
+	networks[n.ID] = true
+	_, dst, err := net.ParseCIDR(n.IPAM.Config.Subnet)
 	if err != nil {
 		return err
 	}
@@ -152,12 +152,12 @@ func joinNet(net *dockertypes.NetworkResource) error {
 	return nil
 }
 
-func leaveNet(net *dockertypes.NetworkResource) error {
-	err := docker.NetworkDisconnect(context.Background(), net.ID, self_container.ID, true)
+func leaveNet(n *dockertypes.NetworkResource) error {
+	err := docker.NetworkDisconnect(context.Background(), n.ID, self_container.ID, true)
 	if err != nil {
 		return err
 	}
-	networks[net.ID] = false
+	networks[n.ID] = false
 	return nil
 }
 
