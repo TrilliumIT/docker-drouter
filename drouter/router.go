@@ -145,7 +145,7 @@ func joinNet(n *dockertypes.NetworkResource) error {
 		Gw: host_route_gw,
 		Dst: dst,
 	}
-	err := host_ns_h.RouteAdd(route)
+	err = host_ns_h.RouteAdd(route)
 	if err != nil {
 		return err
 	}
