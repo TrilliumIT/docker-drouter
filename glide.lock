@@ -1,16 +1,43 @@
-hash: a40daacba52714849a3c7c47de82ea634d066eddfe2086ae07399438b13bbacc
-updated: 2016-05-26T13:57:08.953069395-04:00
+hash: 5928eba8f08fd81257a9d35a38385382ead64793e340743f265adbe13d2a3968
+updated: 2016-05-27T08:22:00.538342205-04:00
 imports:
 - name: github.com/codegangsta/cli
   version: 71f57d300dd6a780ac1856c005c4b518cfd498ec
-- name: github.com/docker/go-plugins-helpers
-  version: 94650054f38b80ab066a72e945a9e7553c292ff1
+- name: github.com/docker/distribution
+  version: 596ca8b86acd3feebedae6bc08abf2a48d403a14
   subpackages:
-  - network
+  - reference
+  - digest
+- name: github.com/docker/engine-api
+  version: c9b5a47a3a6fea97d0a2242307ad25a3331ce03b
+  subpackages:
+  - client
+  - types
+  - types/filters
+  - client/transport
+  - client/transport/cancellable
+  - types/container
+  - types/network
+  - types/reference
+  - types/registry
+  - types/time
+  - types/versions
+  - types/blkiodev
+  - types/strslice
+- name: github.com/docker/go-connections
+  version: c7838b258fbfa3fe88eecfb2a0e08ea0dbd6a646
+  subpackages:
+  - sockets
+  - tlsconfig
+  - nat
 - name: github.com/docker/go-units
   version: 09dda9d4b0d748c57c14048906d3d094a58ec0c9
-- name: github.com/samalba/dockerclient
-  version: 9d56ba7eeb4833b44f2bc2ab9a403a77cee40b6e
+- name: github.com/Microsoft/go-winio
+  version: 4f1a71750d95a5a8a46c40a67ffbed8129c2f138
+- name: github.com/opencontainers/runc
+  version: 1ce23a5bb11b694c992d2d473b8506be0931f361
+  subpackages:
+  - libcontainer/user
 - name: github.com/Sirupsen/logrus
   version: be52937128b38f1d99787bb476c789e2af1147f1
 - name: github.com/vishvananda/netlink
@@ -23,8 +50,14 @@ imports:
   version: d8fe304b0db2bae8e6709e46d19b355926c9f7fc
   subpackages:
   - netaddr
+- name: golang.org/x/net
+  version: 4876518f9e71663000c348837735820161a42df7
+  subpackages:
+  - context
+  - proxy
 - name: golang.org/x/sys
   version: d4feaf1a7e61e1d9e79e6c4e76c6349e9cab0a03
   subpackages:
   - unix
+  - windows
 devImports: []
