@@ -6,7 +6,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/clinta/docker-drouter/drouter"
 	"github.com/codegangsta/cli"
-	"time"
 )
 
 const (

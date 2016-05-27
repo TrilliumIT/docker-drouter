@@ -47,9 +47,13 @@ func init() {
 	}
 
 	// Prepopulate networks that this container is a member of
+	log.Infof("Self_container-info: %v", self_container)
+	log.Infof("Self_container-info.networksettings.networks: %v", self_container.NetworkSettings.Networks)
 	for _, settings := range self_container.NetworkSettings.Networks {
 		networks[settings.NetworkID] = true
 	}
+
+	log.Infof("Member networks on startup: %v", networks)
 
 	self_ns, err := netns.GetFromPid(my_pid)
 	if err != nil {
@@ -74,7 +78,7 @@ func init() {
 }
 
 // Loop to watch for new networks created and create interfaces when needed
-func WatchNetworks(wg *sync.WaitGroup) {
+func WatchNetworks() {
 	log.Info("Watching Networks")
 	for {
 		nets, err := docker.ListNetworks("")
@@ -82,6 +86,7 @@ func WatchNetworks(wg *sync.WaitGroup) {
 			log.Error(err)
 		}
 		for i := range nets {
+			//log.Debugf("Checking network %v", nets[i])
 			drouter_str := nets[i].Options["drouter"]
 			drouter := false
 			if drouter_str != "" {
@@ -98,6 +103,7 @@ func WatchNetworks(wg *sync.WaitGroup) {
 					log.Error(err)
 				}
 			} else if !drouter && networks[nets[i].ID] {
+				log.Debugf("Leaving Net: %+v", nets[i])
 				err := leaveNet(nets[i])
 				if err != nil {
 					log.Error(err)
