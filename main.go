@@ -18,7 +18,14 @@ func main() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	signal.Notify(c, syscall.SIGTERM)
-	go watchQuit()
+	go func() {
+		<-c
+		err := drouter.Cleanup()
+		if err != nil {
+			log.Fatal(err)
+		}
+		os.Exit(0)
+	}()
 
 	var flagDebug = cli.BoolFlag{
 		Name:  "debug, d",
@@ -84,14 +91,4 @@ func Run(ctx *cli.Context) {
 	}
 
 	drouter.WatchEvents()
-}
-
-func watchQuit() {
-	<-c
-	log.Info("Cleaning Up")
-	err := drouter.Cleanup()
-	if err != nil {
-		log.Fatal(err)
-	}
-	os.Exit(0)
 }
