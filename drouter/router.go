@@ -21,11 +21,13 @@ import (
 	dockertypes "github.com/docker/engine-api/types"
 	dockerfilters "github.com/docker/engine-api/types/filters"
 	dockernetworks "github.com/docker/engine-api/types/network"
+	dockerevents "github.com/docker/engine-api/types/events"
 	"golang.org/x/net/context"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"github.com/ziutek/utils/netaddr"
 	"github.com/llimllib/ipaddress"
+	"github.com/vdemeester/docker-events"
 )
 
 var (
@@ -126,8 +128,11 @@ func WatchNetworks(IPOffset int) {
 }
 
 func WatchEvents() {
-	for {
-		time.Sleep(1 * time.Second)
+	errChan := events.Monitor(context.Background(), docker, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
+		log.Infof("Event: %v", event)
+})
+	if err := <-errChan; err != nil {
+		log.Error(err)
 	}
 }
 
