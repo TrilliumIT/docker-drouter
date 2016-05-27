@@ -2,6 +2,8 @@ package main
 
 import (
 	"os"
+	"os/signal"
+	"syscall"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/clinta/docker-drouter/drouter"
@@ -13,6 +15,10 @@ const (
 )
 
 func main() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, syscall.SIGTERM)
+	go watchQuit()
 
 	var flagDebug = cli.BoolFlag{
 		Name:  "debug, d",
@@ -78,4 +84,14 @@ func Run(ctx *cli.Context) {
 	}
 
 	drouter.WatchEvents()
+}
+
+func watchQuit() {
+	<-c
+	log.Info("Cleaning Up")
+	err := drouter.Cleanup()
+	if err != nil {
+		log.Fatal(err)
+	}
+	os.Exit(0)
 }

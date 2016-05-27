@@ -65,12 +65,11 @@ func init() {
 
 	log.Infof("Member networks on startup: %v", networks)
 
-	self_ns, err := netns.GetFromPid(my_pid)
+	self_ns, err := netns.Get()
 	if err != nil {
 		log.Error("Error getting self namespace.")
 		log.Fatal(err)
 	}
-	log.Infof("self_ns: %v", self_ns)
 	self_ns_h, err = netlink.NewHandleAt(self_ns)
 	if err != nil {
 		log.Error("Error getting handle at self namespace.")
@@ -81,7 +80,6 @@ func init() {
 		log.Error("Error getting host namespace. Is this container running in priveleged mode?")
 		log.Fatal(err)
 	}
-	log.Infof("host_ns: %v", self_ns)
 	host_ns_h, err = netlink.NewHandleAt(host_ns)
 	if err != nil {
 		log.Error("Error getting handle at host namespace.")
@@ -171,6 +169,18 @@ func getSelf() (dockertypes.ContainerJSON, error) {
 	return dockertypes.ContainerJSON{}, errors.New("Container not found")
 }
 
+func Cleanup() error {
+	return removeP2PLink()
+}
+
+func removeP2PLink() error {
+	host_link, err := host_ns_h.LinkByName("drouter_veth0")
+	if err != nil {
+		return err
+	}
+	return host_ns_h.LinkDel(host_link)
+}
+
 func MakeP2PLink(p2p_addr string) error {
 	host_link_veth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{Name: "drouter_veth0"},
@@ -204,10 +214,10 @@ func MakeP2PLink(p2p_addr string) error {
 		return err
 	}
 
-	host_addr := p2p_net
+	host_addr := *p2p_net
 	host_addr.IP = netaddr.IPAdd(host_addr.IP, 1)
 	host_netlink_addr := &netlink.Addr{ 
-		IPNet: host_addr,
+		IPNet: &host_addr,
 		Label: "",
 	}
 	err = host_ns_h.AddrAdd(host_link, host_netlink_addr)
@@ -215,16 +225,17 @@ func MakeP2PLink(p2p_addr string) error {
 		return err
 	}
 
-	int_addr := p2p_net
+	int_addr := *p2p_net
 	int_addr.IP = netaddr.IPAdd(int_addr.IP, 2)
 	int_netlink_addr := &netlink.Addr{ 
-		IPNet: int_addr,
+		IPNet: &int_addr,
 		Label: "",
 	}
 	err = self_ns_h.AddrAdd(int_link, int_netlink_addr)
 	if err != nil {
 		return err
 	}
+
 	host_route_gw = int_addr.IP
 
 	err = self_ns_h.LinkSetUp(int_link)
@@ -232,7 +243,7 @@ func MakeP2PLink(p2p_addr string) error {
 		return err
 	}
 
-	err = self_ns_h.LinkSetUp(host_link)
+	err = host_ns_h.LinkSetUp(host_link)
 	if err != nil {
 		return err
 	}
