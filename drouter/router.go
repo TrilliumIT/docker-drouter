@@ -30,7 +30,7 @@ import (
 var (
 	docker                *dockerclient.Client
 	self_container        dockertypes.ContainerJSON
-	networks              map[string]bool
+	networks              = make(map[string]bool)
 	host_ns_h             *netlink.Handle
 	self_ns_h             *netlink.Handle
 	host_route_link_index int
