@@ -70,6 +70,7 @@ func init() {
 		log.Error("Error getting self namespace.")
 		log.Fatal(err)
 	}
+	log.Infof("self_ns: %v", self_ns)
 	self_ns_h, err = netlink.NewHandleAt(self_ns)
 	if err != nil {
 		log.Error("Error getting handle at self namespace.")
@@ -80,6 +81,7 @@ func init() {
 		log.Error("Error getting host namespace. Is this container running in priveleged mode?")
 		log.Fatal(err)
 	}
+	log.Infof("host_ns: %v", self_ns)
 	host_ns_h, err = netlink.NewHandleAt(host_ns)
 	if err != nil {
 		log.Error("Error getting handle at host namespace.")
