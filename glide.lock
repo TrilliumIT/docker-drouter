@@ -1,10 +1,10 @@
-hash: 187915981e84d9639f149a0c68b91b2cf14deff20736f4d08de740d2a005fa09
-updated: 2016-05-27T14:32:46.018745532-04:00
+hash: e53993fdd73f17356e8cfcd67fffe8bd8c48772b6939f672fd83b1c7317696dc
+updated: 2016-05-27T15:34:28.972707083-04:00
 imports:
 - name: github.com/codegangsta/cli
   version: 71f57d300dd6a780ac1856c005c4b518cfd498ec
 - name: github.com/docker/distribution
-  version: 596ca8b86acd3feebedae6bc08abf2a48d403a14
+  version: a5f72a60320b1080ba3c86da9352d7f24442ab49
   subpackages:
   - reference
   - digest
@@ -15,6 +15,7 @@ imports:
   - types
   - types/filters
   - types/networks
+  - types/events
   - types/network
   - client/transport
   - client/transport/cancellable
@@ -43,6 +44,8 @@ imports:
   - libcontainer/user
 - name: github.com/Sirupsen/logrus
   version: be52937128b38f1d99787bb476c789e2af1147f1
+- name: github.com/vdemeester/docker-events
+  version: b308d2e8d639d928c882913bcb4f85b3a84c7a07
 - name: github.com/vishvananda/netlink
   version: e299ab1a585b04a7e7d4d2f609f241b69ca7d326
   subpackages:

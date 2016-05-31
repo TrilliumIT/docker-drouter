@@ -21,11 +21,13 @@ import (
 	dockertypes "github.com/docker/engine-api/types"
 	dockerfilters "github.com/docker/engine-api/types/filters"
 	dockernetworks "github.com/docker/engine-api/types/network"
+	dockerevents "github.com/docker/engine-api/types/events"
 	"golang.org/x/net/context"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"github.com/ziutek/utils/netaddr"
 	"github.com/llimllib/ipaddress"
+	"github.com/vdemeester/docker-events"
 )
 
 var (
@@ -126,8 +128,86 @@ func WatchNetworks(IPOffset int) {
 }
 
 func WatchEvents() {
-	for {
-		time.Sleep(1 * time.Second)
+	errChan := events.Monitor(context.Background(), docker, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
+		if event.Type != "network" { return }
+                if event.Action != "connect" { return }
+                // don't run on self events
+                if event.Actor.Attributes["container"] == self_container.ID { return }
+                // don't run if this network is not being managed
+                if !networks[event.Actor.ID] { return }
+		log.Debugf("Event.Actor: %v", event.Actor)
+
+		containerInfo, err := docker.ContainerInspect(context.Background(), event.Actor.Attributes["container"])
+		if err != nil {
+			log.Error(err)
+			return
+		}
+
+		log.Debugf("containerInfo: %v", containerInfo)
+		log.Debugf("pid: %v", containerInfo.State.Pid)
+		container_ns, err := netns.GetFromPid(containerInfo.State.Pid)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		container_ns_h, err := netlink.NewHandleAt(container_ns)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+
+		routes, err := container_ns_h.RouteList(nil, netlink.FAMILY_V4)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		log.Debugf("container routes: %v", routes)
+		for _, r := range routes {
+			// The container gateway
+			if r.Dst == nil {
+				
+				// Default route has no src, need to get the route to the gateway to get the src
+				src_route, err := container_ns_h.RouteGet(r.Gw)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+				if len(src_route) == 0 {
+					log.Errorf("No route found in container to the containers existing gateway: %v", r.Gw)
+					return
+				}
+
+				// Get the route from gw-container back to the container, 
+				// this src address will be used as the container's gateway
+				gw_rev_route, err := self_ns_h.RouteGet(src_route[0].Src)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+				if len(gw_rev_route) == 0 {
+					log.Errorf("No route found back to container ip: %v", src_route[0].Src)
+					return
+				}
+
+				log.Debugf("Existing default route: %v", r)
+				err = container_ns_h.RouteDel(&r)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+
+				r.Gw = gw_rev_route[0].Src
+				err = container_ns_h.RouteAdd(&r)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+				log.Debugf("Default route changed: %v", r)
+			}
+		}
+	})
+	if err := <-errChan; err != nil {
+		log.Error(err)
 	}
 }
 
