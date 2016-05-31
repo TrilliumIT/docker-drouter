@@ -129,12 +129,12 @@ func WatchNetworks(IPOffset int) {
 
 func WatchEvents() {
 	errChan := events.Monitor(context.Background(), docker, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
-		log.Debugf("Event: %v", event)
-		log.Debugf("Event.Status: %v", event.Status)
-		log.Debugf("Event.ID: %v", event.ID)
-		log.Debugf("Event.From: %v", event.From)
-		log.Debugf("Event.Type: %v", event.Type)
-		log.Debugf("Event.Action: %v", event.Action)
+		if event.Type != "network" { return }
+                if event.Action != "connect" { return }
+                // don't run on self events
+                if event.Actor.Attributes["container"] == self_container.ID { return }
+                // don't run if this network is not being managed
+                if !networks[event.Actor.ID] { return }
 		log.Debugf("Event.Actor: %v", event.Actor)
 })
 	if err := <-errChan; err != nil {
