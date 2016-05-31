@@ -136,7 +136,59 @@ func WatchEvents() {
                 // don't run if this network is not being managed
                 if !networks[event.Actor.ID] { return }
 		log.Debugf("Event.Actor: %v", event.Actor)
-})
+
+		containerInfo, err := docker.ContainerInspect(context.Background(), event.Actor.Attributes["container"])
+		if err != nil {
+			log.Error(err)
+			return
+		}
+
+		log.Debugf("containerInfo: %v", containerInfo)
+		log.Debugf("pid: %v", containerInfo.State.Pid)
+		container_ns, err := netns.GetFromPid(containerInfo.State.Pid)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		container_ns_h, err := netlink.NewHandleAt(container_ns)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+
+		routes, err := container_ns_h.RouteList(nil, netlink.FAMILY_V4)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		for _, r := range routes {
+			// The container gateway
+			if r.Dst == nil {
+				log.Debugf("Existing default route: %v", r)
+				err := container_ns_h.RouteDel(r)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+
+				// Get the route from self-container back to the starting container, 
+				// this address will be used as the starting container's gateway
+				gw_rev_route, err := self_ns_h.RouteGet(r.Src)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+
+				r.Gw = gw_rev_route[0].Src
+				err = container_ns_h.RouteAdd(r)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+				log.Debugf("Default route changed: %v", r)
+			}
+		}
+	})
 	if err := <-errChan; err != nil {
 		log.Error(err)
 	}
