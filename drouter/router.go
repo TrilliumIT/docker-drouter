@@ -161,26 +161,43 @@ func WatchEvents() {
 			log.Error(err)
 			return
 		}
+		log.Debugf("container routes: %v", routes)
 		for _, r := range routes {
 			// The container gateway
 			if r.Dst == nil {
-				log.Debugf("Existing default route: %v", r)
-				err := container_ns_h.RouteDel(r)
+				
+				// Default route has no src, need to get the route to the gateway to get the src
+				src_route, err := container_ns_h.RouteGet(r.Gw)
 				if err != nil {
 					log.Error(err)
 					return
 				}
+				if len(src_route) == 0 {
+					log.Errorf("No route found in container to the containers existing gateway: %v", r.Gw)
+					return
+				}
 
-				// Get the route from self-container back to the starting container, 
-				// this address will be used as the starting container's gateway
-				gw_rev_route, err := self_ns_h.RouteGet(r.Src)
+				// Get the route from gw-container back to the container, 
+				// this src address will be used as the container's gateway
+				gw_rev_route, err := self_ns_h.RouteGet(src_route[0].Src)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+				if len(gw_rev_route) == 0 {
+					log.Errorf("No route found back to container ip: %v", src_route[0].Src)
+					return
+				}
+
+				log.Debugf("Existing default route: %v", r)
+				err = container_ns_h.RouteDel(&r)
 				if err != nil {
 					log.Error(err)
 					return
 				}
 
 				r.Gw = gw_rev_route[0].Src
-				err = container_ns_h.RouteAdd(r)
+				err = container_ns_h.RouteAdd(&r)
 				if err != nil {
 					log.Error(err)
 					return
