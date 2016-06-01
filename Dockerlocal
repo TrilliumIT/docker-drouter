@@ -1,7 +1,0 @@
-FROM debian:jessie
-
-MAINTAINER Clint Armstrong <clint@TrilliumITrmstrong.net>
-
-ADD docker-drouter /docker-drouter
-
-ENTRYPOINT ["/docker-drouter"]

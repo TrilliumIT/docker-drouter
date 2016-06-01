@@ -2,15 +2,8 @@
 set -e
 
 LATEST_RELEASE=$(git describe --tags --abbrev=0 | sed "s/^v//g")
-DOCKER_VER=$(grep "ENV VER=" Dockerfile | sed "s/^ENV VER=v//g")
 MAIN_VER=$(grep "version = " main.go | sed 's/[ \t]*version[ \t]*=[ \t]*//g' | sed 's/"//g')
 VERS="${LATEST_RELEASE}\n${DOCKER_VER}\n${MAIN_VER}"
-
-# Dockerfile should always match latest release
-if [ "${DOCKER_VER}" != "${LATEST_RELEASE}" ] ; then
-	echo "Dockerfile does not match latest tag"
-	exit 1
-fi
 
 # For tagged commits
 if [ "$(git describe --tags)" = "${LATEST_RELEASE}" ] ; then
@@ -28,10 +21,11 @@ else
 		echo "Please increment the version in main.go"
 		exit 1
 	fi
-	DKR_TAG="prerelease"
+	DKR_TAG="master"
 fi
 
 
-docker build -f ./Dockerbuild -t trilliumit/docker-drouter-build:v${MAIN_VER} . && docker run trilliumit/docker-drouter-build:v${MAIN_VER} cat /go/bin/docker-drouter > docker-drouter || exit $?
+docker build -t trilliumit/docker-drouter:v${MAIN_VER} -t trilliumit/docker-drouter:${DKR_TAG} . 
+
+docker run --entrypoint cat trilliumit/docker-drouter-build:v${DKR_TAG} /go/bin/docker-drouter > docker-drouter
 chmod +x docker-drouter
-docker build -f ./Dockerlocal -t trilliumit/docker-drouter:v${MAIN_VER} -t trilliumit/docker-drouter:${DKR_TAG} . || exit $?
