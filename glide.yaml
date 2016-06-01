@@ -1,4 +1,4 @@
-package: github.com/clinta/docker-drouter
+package: github.com/TrilliumIT/docker-drouter
 import:
 - package: github.com/Sirupsen/logrus
   version: v0.9.0
