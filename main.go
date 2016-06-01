@@ -6,7 +6,7 @@ import (
 	"syscall"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/clinta/docker-drouter/drouter"
+	"github.com/TrilliumIT/docker-drouter/drouter"
 	"github.com/codegangsta/cli"
 )
 

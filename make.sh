@@ -32,6 +32,6 @@ else
 fi
 
 
-docker build -f ./Dockerbuild -t clinta/docker-drouter-build:v${MAIN_VER} . && docker run clinta/docker-drouter-build:v${MAIN_VER} cat /go/bin/docker-drouter > docker-drouter || exit $?
+docker build -f ./Dockerbuild -t trilliumit/docker-drouter-build:v${MAIN_VER} . && docker run trilliumit/docker-drouter-build:v${MAIN_VER} cat /go/bin/docker-drouter > docker-drouter || exit $?
 chmod +x docker-drouter
-docker build -f ./Dockerlocal -t clinta/docker-drouter:v${MAIN_VER} -t clinta/docker-drouter:${DKR_TAG} . || exit $?
+docker build -f ./Dockerlocal -t trilliumit/docker-drouter:v${MAIN_VER} -t trilliumit/docker-drouter:${DKR_TAG} . || exit $?
