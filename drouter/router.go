@@ -96,8 +96,8 @@ func WatchNetworks(IPOffset int) {
 			log.Error("Error getting network list")
 			log.Error(err)
 		}
-		for i := range nets {
-			drouter_str := nets[i].Options["drouter"]
+		for _, net := range nets {
+			drouter_str := net.Options["drouter"]
 			drouter := false
 			if drouter_str != "" {
 				drouter, err = strconv.ParseBool(drouter_str) 
@@ -107,18 +107,18 @@ func WatchNetworks(IPOffset int) {
 				}
 			} 
 
-			if drouter && !networks[nets[i].ID] {
-				log.Debugf("Joining Net: %+v", nets[i])
-				err := joinNet(&nets[i], IPOffset)
+			if drouter && !networks[net.ID] {
+				log.Debugf("Joining Net: %+v", net)
+				err := joinNet(&net, IPOffset)
 				if err != nil {
-					log.Errorf("Error joining network: %v", nets[i])
+					log.Errorf("Error joining network: %v", net)
 					log.Error(err)
 				}
-			} else if !drouter && networks[nets[i].ID] {
-				log.Debugf("Leaving Net: %+v", nets[i])
-				err := leaveNet(&nets[i])
+			} else if !drouter && networks[net.ID] {
+				log.Debugf("Leaving Net: %+v", net)
+				err := leaveNet(&net)
 				if err != nil {
-					log.Errorf("Error leaving network: %v", nets[i])
+					log.Errorf("Error leaving network: %v", net)
 					log.Error(err)
 				}
 			}
@@ -214,8 +214,7 @@ func WatchEvents() {
 func joinNet(n *dockertypes.NetworkResource, IPOffset int) error {
 	endpointSettings := &dockernetworks.EndpointSettings{}
 	if IPOffset != 0 {
-		for i := range n.IPAM.Config {
-			ipamconfig := n.IPAM.Config[i]
+		for _, ipamconfig := range n.IPAM.Config {
 			log.Debugf("ip-offset configured")
 			_, subnet, err := net.ParseCIDR(ipamconfig.Subnet)
 			if err != nil {
@@ -245,8 +244,7 @@ func joinNet(n *dockertypes.NetworkResource, IPOffset int) error {
 		return err
 	}
 	networks[n.ID] = true
-	for i := range n.IPAM.Config {
-		ipamconfig := n.IPAM.Config[i]
+	for _, ipamconfig := range n.IPAM.Config {
 		_, dst, err := net.ParseCIDR(ipamconfig.Subnet)
 		if err != nil {
 			return err
