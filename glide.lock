@@ -1,21 +1,20 @@
-hash: e53993fdd73f17356e8cfcd67fffe8bd8c48772b6939f672fd83b1c7317696dc
-updated: 2016-05-27T15:34:28.972707083-04:00
+hash: 75bdf311a08de67538ba28da9c7fa7c5c9a7a9fdbe46ecac765c4a5943ec3f44
+updated: 2016-06-01T09:37:35.315685067-04:00
 imports:
 - name: github.com/codegangsta/cli
-  version: 71f57d300dd6a780ac1856c005c4b518cfd498ec
+  version: 9a18ffad6c548ca4d458d4c30a8aa4d181cf92fa
 - name: github.com/docker/distribution
-  version: a5f72a60320b1080ba3c86da9352d7f24442ab49
+  version: d9c4f03bcce7a4967b5ec07d7028786c4081b890
   subpackages:
   - reference
   - digest
 - name: github.com/docker/engine-api
-  version: c9b5a47a3a6fea97d0a2242307ad25a3331ce03b
+  version: dbdcba0b66ca7624c8c9d55c2201a2a5c62d8258
   subpackages:
   - client
   - types
-  - types/filters
-  - types/networks
   - types/events
+  - types/filters
   - types/network
   - client/transport
   - client/transport/cancellable
@@ -39,15 +38,15 @@ imports:
 - name: github.com/Microsoft/go-winio
   version: 4f1a71750d95a5a8a46c40a67ffbed8129c2f138
 - name: github.com/opencontainers/runc
-  version: 1ce23a5bb11b694c992d2d473b8506be0931f361
+  version: 4450f7c8dea183407c91c35b19051eea22dc5965
   subpackages:
   - libcontainer/user
 - name: github.com/Sirupsen/logrus
-  version: be52937128b38f1d99787bb476c789e2af1147f1
+  version: f3cfb454f4c209e6668c95216c4744b8fddb2356
 - name: github.com/vdemeester/docker-events
-  version: b308d2e8d639d928c882913bcb4f85b3a84c7a07
+  version: 20e6d2db238723e68197a9e3c6c34c99a9893a9c
 - name: github.com/vishvananda/netlink
-  version: e299ab1a585b04a7e7d4d2f609f241b69ca7d326
+  version: 7995ff5647a22cbf0dc41bf5c0e977bdb0d5c6b7
   subpackages:
   - nl
 - name: github.com/vishvananda/netns
@@ -62,7 +61,7 @@ imports:
   - context
   - proxy
 - name: golang.org/x/sys
-  version: d4feaf1a7e61e1d9e79e6c4e76c6349e9cab0a03
+  version: 076b546753157f758b316e59bcb51e6807c04057
   subpackages:
   - unix
   - windows
