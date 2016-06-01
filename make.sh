@@ -27,5 +27,5 @@ fi
 
 docker build -t trilliumit/docker-drouter:v${MAIN_VER} -t trilliumit/docker-drouter:${DKR_TAG} . 
 
-docker run --entrypoint cat trilliumit/docker-drouter-build:v${DKR_TAG} /go/bin/docker-drouter > docker-drouter
+docker run --entrypoint cat trilliumit/docker-drouter-build:${DKR_TAG} /go/bin/docker-drouter > docker-drouter
 chmod +x docker-drouter
