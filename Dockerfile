@@ -17,4 +17,4 @@ WORKDIR ${SRC_ROOT}
 ADD . ${SRC_ROOT}/
 RUN go get -t $($GOPATH/bin/glide novendor)
 
-ENTRYPOINT ["/go/docker-drouter"]
+ENTRYPOINT ["/go/bin/docker-drouter"]
