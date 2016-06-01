@@ -1,9 +1,20 @@
-FROM debian:jessie
-ENV VER=v0.5.1
+FROM golang:1.5.3-wheezy
 
 MAINTAINER Clint Armstrong <clint@TrilliumITrmstrong.net>
 
-ADD https://github.com/TrilliumIT/docker-drouter/releases/download/${VER}/docker-drouter /docker-drouter
-RUN chmod +x /docker-drouter
+ENV GO15VENDOREXPERIMENT 1
 
-ENTRYPOINT ["/docker-drouter"]
+RUN go get github.com/Masterminds/glide
+
+ENV SRC_ROOT /go/src/github.com/TrilliumIT/docker-drouter 
+
+# Setup our directory and give convenient path via ln.
+RUN mkdir -p ${SRC_ROOT}
+
+WORKDIR ${SRC_ROOT}
+
+# Used to only go get if sources change.
+ADD . ${SRC_ROOT}/
+RUN go get -t $($GOPATH/bin/glide novendor)
+
+ENTRYPOINT ["/go/docker-drouter"]
