@@ -6,7 +6,7 @@ import (
 	"syscall"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/TrilliumIT/docker-drouter/drouter"
+  "./drouter"
 	"github.com/codegangsta/cli"
 )
 
@@ -31,23 +31,29 @@ func main() {
 		Name:  "debug, d",
 		Usage: "Enable debugging.",
 	}
-	var flagIPOffset = cli.IntFlag{
-		Name:  "ip-offset",
-		Value: 0,
-		Usage: "An int to indicate which IP the router should be given. A value of 1 will use the first IP address in the network. A value of -1 will used the last IP in the network. The default (0) will allow the IPAM driver to choose an arbitrary IP.",
-	}
 	var flagAggressive = cli.BoolFlag{
 		Name:  "aggressive",
-		Usage: "Scan for new networks and create routing interfaces for all docker networks with the drouter option set, regardless of whether or not there are any containers on that network on this host.",
+		Value: true,
+		Usage: "Scan for new networks and create routing interfaces for all docker networks with the drouter option set, regardless of whether or not there are any containers on that network on this host. (Currently enabled by default as passive mode is not yet implemented)",
 	}
-	var flagDisableP2P = cli.BoolFlag{
-		Name:  "disable-p2p",
-		Usage: "Disable the creation of a p2p link between the host and the routing container. Use this option if you do not wish you want traffic routed between container networks but not between the host and the container",
+  var flagSummaryNets = cli.StringSliceFlag{
+		Name: "summary-net",
+		Usage: "Each instance of this option will be injected into each containers routing table once. It is expected that the summary networks cover ONLY and ALL of your vxlan networks. The default behavior adds the prefix for every vxlan into every containers routing table as vxlans are created, this option adds the routs only at container creation time.",
+	}
+  var flagHostGatway = cli.BoolFlat{
+		Name: "host-gateway",
+		Value: false,
+		Usage: "Set to true to allow containers to use the host's default route.",
+	}
+	var flagMasquerade = cli.BoolFlag{
+		Name: "masquerade",
+		Value: false,
+		Usage: "When using the host-gateway option, masquerade traffic to the host's interface address.",
 	}
 	var flagP2PAddr = cli.StringFlag{
 		Name: "p2p-addr",
 		Value: "172.29.255.252/30",
-		Usage: "The network to use for routing between the host and the container. The host will be assigned the first host address in the network, the container will be assigned the second. This is a p2p link so anything beyond a /30 is unnecessary",
+		Usage: "When using the host-gateway option, use this p2p prefix for routing between the host and the drouter container. The host will be assigned the first host address in the network, the container will be assigned the second. This is a p2p link so anything beyond a /30 is unnecessary",
 	}
 	app := cli.NewApp()
 	app.Name = "docker-drouter"
@@ -55,9 +61,10 @@ func main() {
 	app.Version = version
 	app.Flags = []cli.Flag{
 		flagDebug,
-		flagIPOffset,
 		flagAggressive,
-		flagDisableP2P,
+		flagSummaryNets,
+		flagHostGateway,
+		flagMasquerade,
 		flagP2PAddr,
 	}
 	app.Action = Run
@@ -78,18 +85,19 @@ func Run(ctx *cli.Context) {
 		log.Info("Debug logging enabled")
 	}
 
-	if !ctx.Bool("disable-p2p") {
-		err := drouter.MakeP2PLink(ctx.String("p2p-addr"))
-		if err != nil {
-			log.Error("Error creating P2P Link")
-			log.Fatal(err)
-		}
+  dr, err := NewDistributedRouter(&drouter.DistrubutedRouterOptions{
+		ipOffset: ctx.Int("ip-offset"),
+		aggressive: ctx.Bool("aggressive"),
+		summaryNets: ctx.StringSlice("summary-net"),
+		hostGateway: ctx.Bool("host-gateway"),
+		masquerade: ctx.Bool("masquerade"),
+		p2pAddr: ctx.String("p2p-addr"),
+	})
+
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	if ctx.Bool("aggressive") {
-		log.Info("Aggressive mode enabled")
-		go drouter.WatchNetworks(ctx.Int("ip-offset"))
-	}
-
-	drouter.WatchEvents()
+	defer dr.Close()
+	dr.Start()
 }
