@@ -6,7 +6,7 @@ import (
 	"syscall"
 
 	log "github.com/Sirupsen/logrus"
-  "./drouter"
+  "github.com/TrilliumIT/docker-drouter/drouter"
 	"github.com/codegangsta/cli"
 )
 
@@ -31,29 +31,43 @@ func main() {
 		Name:  "debug, d",
 		Usage: "Enable debugging.",
 	}
-	var flagAggressive = cli.BoolFlag{
-		Name:  "aggressive",
+	var flagIPOffset = cli.IntFlag{
+		Name: "ip-offset",
+		value: 0
+		Usage: "",
+	}
+	var flagAggresiveMode = cli.BoolFlag{
+		Name: "aggressive",
 		Value: true,
-		Usage: "Scan for new networks and create routing interfaces for all docker networks with the drouter option set, regardless of whether or not there are any containers on that network on this host. (Currently enabled by default as passive mode is not yet implemented)",
+		Usage: "Set true to make drouter automatically connect to all docker networks with the 'drouter' option set",
 	}
-  var flagSummaryNets = cli.StringSliceFlag{
-		Name: "summary-net",
-		Usage: "Each instance of this option will be injected into each containers routing table once. It is expected that the summary networks cover ONLY and ALL of your vxlan networks. The default behavior adds the prefix for every vxlan into every containers routing table as vxlans are created, this option adds the routs only at container creation time.",
+  var flagLocalShortcut = cli.BoolFlag{
+		Name: "local-shortcut",
+		Value: true,
+		Usage: "Set true to insert routes in the host destined for docker networks pointing to drouter over a host<->drouter p2p link.",
 	}
-  var flagHostGatway = cli.BoolFlat{
-		Name: "host-gateway",
-		Value: false,
-		Usage: "Set to true to allow containers to use the host's default route.",
+  var flagLocalGatway = cli.BoolFlag{
+		Name: "local-gateway",
+		Value: true,
+		Usage: "Set true to insert a default route on drouter pointing to the host over the host<->drouter p2p link. (implies --local-shortcut)",
 	}
 	var flagMasquerade = cli.BoolFlag{
 		Name: "masquerade",
-		Value: false,
-		Usage: "When using the host-gateway option, masquerade traffic to the host's interface address.",
+		Value: true,
+		Usage: "Set true to masquerade container traffic to it's host's interface IP address.",
 	}
-	var flagP2PAddr = cli.StringFlag{
-		Name: "p2p-addr",
+	var flagP2PNet = cli.StringFlag{
+		Name: "p2p-net",
 		Value: "172.29.255.252/30",
-		Usage: "When using the host-gateway option, use this p2p prefix for routing between the host and the drouter container. The host will be assigned the first host address in the network, the container will be assigned the second. This is a p2p link so anything beyond a /30 is unnecessary",
+		Usage: "Use this option to customize the network used for the host<->drouter p2p link.",
+	}
+  var flagSummaryNets = cli.StringSliceFlag{
+		Name: "summary-net",
+		Usage: "",
+	}
+	var flagTransitNet = cli.StringFlag{
+		Name: "transit-net",
+		Usage: "Set a transit network for drouter to always connect to. Network must have 'drouter' option set. If network has a gateway, and --local-gateway=false, drouter's default gateway will be through this network's gateway. (this option is required when --aggressive=false)",
 	}
 	app := cli.NewApp()
 	app.Name = "docker-drouter"
@@ -61,11 +75,14 @@ func main() {
 	app.Version = version
 	app.Flags = []cli.Flag{
 		flagDebug,
-		flagAggressive,
-		flagSummaryNets,
-		flagHostGateway,
+		flagIPOffset,
+		flagAggressiveMode,
+		flagLocalShortcut,
+		flagLocalGateway,
 		flagMasquerade,
-		flagP2PAddr,
+		flagP2PNet,
+		flagSummaryNets,
+		flagTransitNet,
 	}
 	app.Action = Run
 	app.Run(os.Args)
@@ -88,10 +105,12 @@ func Run(ctx *cli.Context) {
   dr, err := NewDistributedRouter(&drouter.DistrubutedRouterOptions{
 		ipOffset: ctx.Int("ip-offset"),
 		aggressive: ctx.Bool("aggressive"),
-		summaryNets: ctx.StringSlice("summary-net"),
-		hostGateway: ctx.Bool("host-gateway"),
+		localShortcut: ctx.Bool("local-shortcut"),
+		localGateway: ctx.Bool("local-gateway"),
 		masquerade: ctx.Bool("masquerade"),
-		p2pAddr: ctx.String("p2p-addr"),
+		p2pNet: ctx.String("p2p-addr"),
+		summaryNets: ctx.StringSlice("summary-net"),
+		transitNet: ctx.String("transit-net"),
 	})
 
 	if err != nil {
