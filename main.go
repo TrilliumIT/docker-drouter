@@ -2,11 +2,11 @@ package main
 
 import (
 	"os"
-	"os/signal"
-	"syscall"
+	//"os/signal"
+	//"syscall"
 
 	log "github.com/Sirupsen/logrus"
-  "github.com/TrilliumIT/docker-drouter/drouter"
+	"github.com/TrilliumIT/docker-drouter/drouter"
 	"github.com/codegangsta/cli"
 )
 
@@ -15,17 +15,19 @@ const (
 )
 
 func main() {
+	/* is this necessary with defer now?
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	signal.Notify(c, syscall.SIGTERM)
 	go func() {
 		<-c
-		err := drouter.Cleanup()
+		err := drouter.Close()
 		if err != nil {
 			log.Fatal(err)
 		}
 		os.Exit(0)
 	}()
+	*/
 
 	var flagDebug = cli.BoolFlag{
 		Name:  "debug, d",
@@ -33,27 +35,23 @@ func main() {
 	}
 	var flagIPOffset = cli.IntFlag{
 		Name: "ip-offset",
-		value: 0
+		Value: 0,
 		Usage: "",
 	}
-	var flagAggresiveMode = cli.BoolFlag{
+	var flagAggressive = cli.BoolTFlag{
 		Name: "aggressive",
-		Value: true,
 		Usage: "Set true to make drouter automatically connect to all docker networks with the 'drouter' option set",
 	}
-  var flagLocalShortcut = cli.BoolFlag{
+  var flagLocalShortcut = cli.BoolTFlag{
 		Name: "local-shortcut",
-		Value: true,
 		Usage: "Set true to insert routes in the host destined for docker networks pointing to drouter over a host<->drouter p2p link.",
 	}
-  var flagLocalGatway = cli.BoolFlag{
+  var flagLocalGateway = cli.BoolTFlag{
 		Name: "local-gateway",
-		Value: true,
 		Usage: "Set true to insert a default route on drouter pointing to the host over the host<->drouter p2p link. (implies --local-shortcut)",
 	}
-	var flagMasquerade = cli.BoolFlag{
+	var flagMasquerade = cli.BoolTFlag{
 		Name: "masquerade",
-		Value: true,
 		Usage: "Set true to masquerade container traffic to it's host's interface IP address.",
 	}
 	var flagP2PNet = cli.StringFlag{
@@ -76,7 +74,7 @@ func main() {
 	app.Flags = []cli.Flag{
 		flagDebug,
 		flagIPOffset,
-		flagAggressiveMode,
+		flagAggressive,
 		flagLocalShortcut,
 		flagLocalGateway,
 		flagMasquerade,
@@ -102,7 +100,7 @@ func Run(ctx *cli.Context) {
 		log.Info("Debug logging enabled")
 	}
 
-  dr, err := NewDistributedRouter(&drouter.DistrubutedRouterOptions{
+	opts := &drouter.DistributedRouterOptions{
 		ipOffset: ctx.Int("ip-offset"),
 		aggressive: ctx.Bool("aggressive"),
 		localShortcut: ctx.Bool("local-shortcut"),
@@ -111,7 +109,9 @@ func Run(ctx *cli.Context) {
 		p2pNet: ctx.String("p2p-addr"),
 		summaryNets: ctx.StringSlice("summary-net"),
 		transitNet: ctx.String("transit-net"),
-	})
+	}
+
+  dr, err := drouter.NewDistributedRouter(opts)
 
 	if err != nil {
 		log.Fatal(err)

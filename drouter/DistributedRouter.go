@@ -15,6 +15,17 @@ import (
 	"golang.org/x/net/context"
 )
 
+type DistributedRouterOptions struct {
+	ipOffset              int
+	aggressive            bool
+	localShortcut         bool
+	localGateway          bool
+	masquerade            bool
+	p2pNet                string
+	summaryNets           []string
+	transitNet            string
+}
+
 type DistributedRouter struct {
 	DistributedRouterOptions
 	dc                    *dockerclient.Client
@@ -26,17 +37,6 @@ type DistributedRouter struct {
 	pid                   int
 	p2p                   p2pNetwork
 	summaryNets           []net.IPNet
-}
-
-type DistributedRouterOptions struct {
-	ipOffset              int
-	aggressive            bool
-	localShortcut         bool
-	localGateway          bool
-	masquerade            bool
-	p2pNet                string
-	summaryNets           []string
-	transitNet            string
 }
 
 func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter, error) {
