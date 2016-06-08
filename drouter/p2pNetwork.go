@@ -2,6 +2,7 @@ package drouter
 
 import (
   "net"
+	log "github.com/Sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"github.com/ziutek/utils/netaddr"
 )
@@ -73,8 +74,6 @@ func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
 	}
 	dr.p2p.selfIP = int_addr.IP
 
-//	host_route_gw = int_addr.IP
-
 	err = dr.selfNamespace.LinkSetUp(int_link)
 	if err != nil {
 		return err
@@ -83,6 +82,15 @@ func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
 	err = dr.hostNamespace.LinkSetUp(host_link)
 	if err != nil {
 		return err
+	}
+
+	if dr.localGateway {
+		dr.defaultRoute = host_addr.IP
+		err = dr.setDefaultRoute()
+		if err != nil {
+			log.Error("--local-gateway=true and unable to set default route to host's p2p address.")
+			return err
+		}
 	}
 
 	return nil
