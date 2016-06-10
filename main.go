@@ -46,9 +46,9 @@ func main() {
 		Value: "172.29.255.252/30",
 		Usage: "Use this option to customize the network used for the host<->drouter p2p link.",
 	}
-  var flagSummaryNets = cli.StringSliceFlag{
-		Name: "summary-net",
-		Usage: "",
+  var flagStaticRoutes = cli.StringSliceFlag{
+		Name: "static-route",
+		Usage: "Specify one or many CIDR addresses that will be installed as routes via drouter to all containers.",
 	}
 	var flagTransitNet = cli.StringFlag{
 		Name: "transit-net",
@@ -66,7 +66,7 @@ func main() {
 		flagLocalGateway,
 		flagMasquerade,
 		flagP2PNet,
-		flagSummaryNets,
+		flagStaticRoutes,
 		flagTransitNet,
 	}
 	app.Action = Run
@@ -93,8 +93,8 @@ func Run(ctx *cli.Context) {
 		LocalShortcut: ctx.Bool("local-shortcut"),
 		LocalGateway: ctx.Bool("local-gateway"),
 		Masquerade: ctx.Bool("masquerade"),
-		P2pNet: ctx.String("p2p-addr"),
-		SummaryNets: ctx.StringSlice("summary-net"),
+		P2pNet: ctx.String("p2p-net"),
+		StaticRoutes: ctx.StringSlice("static-route"),
 		TransitNet: ctx.String("transit-net"),
 	}
 

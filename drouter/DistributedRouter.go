@@ -22,7 +22,7 @@ type DistributedRouterOptions struct {
 	LocalGateway          bool
 	Masquerade            bool
 	P2pNet                string
-	SummaryNets           []string
+	StaticRoutes          []string
 	TransitNet            string
 }
 
@@ -35,7 +35,7 @@ type DistributedRouter struct {
 	defaultRoute          net.IP
 	pid                   int
 	p2p                   p2pNetwork
-	summaryNets           []net.IPNet
+	staticRoutes          []*net.IPNet
 	networkTimer          *time.Timer
 	ipOffset              int
 	aggressive            bool
@@ -96,7 +96,15 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 		}
 	}
 
-	//TODO: parse and set summary networks
+	sroutes := make([]*net.IPNet, 0)
+	for _, sr := range options.StaticRoutes {
+		_, cidr, err := net.ParseCIDR(sr)
+		if err != nil {
+			log.Errorf("Failed to parse static route: %v", sr)
+			continue
+		}
+		sroutes = append(sroutes, cidr)
+	}
 
 	//create our DistributedRouter object
 	dr := &DistributedRouter{
@@ -109,6 +117,7 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 		localShortcut: lsc,
 		localGateway: lgw,
 		masquerade: options.Masquerade,
+		staticRoutes: sroutes,
 	}
 	
 	err = dr.updateSelfContainer()
@@ -118,7 +127,6 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 	}
 
 
-	//pre-populate networks slice with existing networks
 	dr.networks = make(map[string]*drNetwork)
 	log.Debug("Leaving all connected currently networks.")
 	for _, settings := range dr.selfContainer.NetworkSettings.Networks {
@@ -128,7 +136,6 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 			continue
 		}
 	}
-	log.Debug("Completed leaving networks.")
 
 	//initial setup
 	if dr.localShortcut {
@@ -137,6 +144,9 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 			log.Error("Failed to makeP2PLink().")
 			return nil, err
 		}
+
+		//add p2p prefix to static routes
+		dr.staticRoutes = append(dr.staticRoutes, dr.p2p.network)
 		if dr.masquerade {
 			log.Debug("--masquerade detected, inserting masquerade rule.")
 			if err := insertMasqRule(); err != nil { 

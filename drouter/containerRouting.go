@@ -61,12 +61,6 @@ func (dr *DistributedRouter) syncAllRoutes() error {
 func (dr *DistributedRouter) syncContainerRoutes(ch *netlink.Handle) error {
 	log.Debug("syncContainerRoutes()")
 
-	if len(dr.summaryNets) > 0 {
-		log.Error("Summary nets are not implemented yet.")
-		//TODO: insert summary routes
-		return nil
-	}
-
 	//Loop through all container routes, ensure each one is known otherwise scrub it.
 	log.Debug("Retrieving container routes.")
 	routes, err := ch.RouteList(nil, netlink.FAMILY_V4)
@@ -79,13 +73,11 @@ func (dr *DistributedRouter) syncContainerRoutes(ch *netlink.Handle) error {
 	for _, r := range routes {
 		//don't mess with the default route
 		if r.Dst == nil {
-			log.Debugf("Found default route: %v", r)
 			continue
 		}
 
 		//don't mess with directly attached networks
 		if r.Gw == nil {
-			log.Debugf("Found direct route: %v", r)
 			continue
 		}
 
@@ -94,15 +86,20 @@ func (dr *DistributedRouter) syncContainerRoutes(ch *netlink.Handle) error {
 		for _, drn := range dr.networks {
 			for _, sn := range drn.subnets {
 				if sn.Contains(r.Gw) {
-					log.Debugf("Found known route: %v", r)
+					//route is for a known subnet
 					known = true
 					break Networks
 				}
 			}
 		}
 
+		if dr.p2p.network.Contains(r.Gw) {
+			//route is for the p2p subnet
+			known = true
+		}
+
 		if !known {
-			log.Infof("Attempting delete unknown route: %v", r)
+			log.Infof("Attempting to delete unknown route for: %v", r.Dst)
 			err := ch.RouteDel(&r)
 			if err != nil {
 				log.Error(err)
@@ -111,32 +108,67 @@ func (dr *DistributedRouter) syncContainerRoutes(ch *netlink.Handle) error {
 		}
 	}
 
-	//Loop through all known networks, ensure each one is installed in the container
-	log.Info("Syncing routes.")
+	if len(dr.networks) == 0 {
+		//bail since we can't route without connections
+		//happens during Close()
+		return nil
+	}
+
+	//get the drouter gateway IP for this container
+	gateway, err := dr.getContainerPathIP(ch)
+	if err != nil {
+		return err
+	}
+
+	//get link index for the gateway network
+	log.Debugf("Getting container route to %v", gateway)
+	lindex, err := ch.RouteGet(gateway)
+	if err != nil {
+		return err
+	}
+
+	//Loop through all static routes, ensure each one is installed in the container
+	log.Info("Syncing static routes.")
+	//add routes for all the static routes
+	StaticRoute:
+	for _, sr := range dr.staticRoutes {
+		croute, err := ch.RouteGet(sr.IP)
+		if err == nil {
+			for _, r := range croute {
+				//don't skip locally attached route because false positives could occur
+				//just let netlink issue a warning that the static route failed to add
+				if r.Gw.Equal(gateway) {
+					//skip existing route
+					continue StaticRoute
+				}
+			}
+		}
+
+		route := &netlink.Route{
+			LinkIndex: lindex[0].LinkIndex,
+			Dst: sr,
+			Gw: gateway,
+		}
+
+		log.Infof("Adding static route to %v via %v.", sr, gateway)
+		err = ch.RouteAdd(route)
+		if err != nil {
+			log.Warning(err)
+			continue
+		}
+	}
+
+	//Loop through all discovered networks, ensure each one is installed in the container
+	log.Info("Syncing discovered routes.")
 	for _, drn := range dr.networks {
-		//get the drouter gateway IP for this container
-		gateway, err := dr.getContainerPathIP(ch)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-
-		//get link index for the gateway network
-		log.Debugf("Getting container route to %v", gateway)
-		lindex, err := ch.RouteGet(gateway)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-
-		//add routes for all the subnets of this network
+		//add routes for all the subnets of this discovered network
 		Subnet:
 		for _, sn := range drn.subnets {
 			croute, err := ch.RouteGet(sn.IP)
 			if err == nil {
 				for _, r := range croute {
 					if r.Gw == nil || r.Gw.Equal(gateway) {
-						log.Debugf("Skipping existing route: %v", r)
+						//skip existing or local route
 						continue Subnet
 					}
 				}
@@ -148,7 +180,7 @@ func (dr *DistributedRouter) syncContainerRoutes(ch *netlink.Handle) error {
 				Gw: gateway,
 			}
 
-			log.Infof("Adding route to %v via %v .", sn, gateway)
+			log.Infof("Adding discovered route to %v via %v.", sn, gateway)
 			err = ch.RouteAdd(route)
 			if err != nil {
 				log.Error(err)
@@ -220,11 +252,7 @@ func (dr *DistributedRouter) watchEvents() error {
 		// don't run on self events
 		if event.Actor.Attributes["container"] == dr.selfContainer.ID { return }
 
-		log.Debugf("Network connect event detected. Syncing Networks.")
-		err := dr.syncNetworks()
-		if err != nil {
-			log.Error(err)
-		}
+		//TODO: join the network, if we are not connected
 		
 		// don't run if this network is not a "drouter" network
 		if _, ok := dr.networks[event.Actor.ID]; !ok {
@@ -261,47 +289,6 @@ func (dr *DistributedRouter) watchEvents() error {
 
 	return nil
 }
-
-/*
-//return filtered list of container handles (removes ourself and --net=host containers)
-func (dr *DistributedRouter) getContainerHandleList() ([]*netlink.Handle, error) {
-
-	mcs := make([]*netlink.Handle, 1)
-	//get filtered list of containers
-	containers, err := dr.dc.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, c := range containers {
-		cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-
-		//don't try to set routes for ourself
-		if cjson.State.Pid == dr.pid {
-			continue
-		}
-
-		//skip containers running with --net=host
-		if cjson.HostConfig.NetworkMode == "host" {
-			continue
-		}
-
-		ch, err := netlinkHandleFromPid(cjson.State.Pid)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-
-		mcs = append(mcs, ch)
-	}
-
-	return mcs, nil
-}
-*/
 
 //returns a drouter IP that is on some same network as provided container
 func (dr *DistributedRouter) getContainerPathIP(ch *netlink.Handle) (net.IP, error) {
