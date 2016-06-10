@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"strings"
 	"net"
-	"fmt"
 	log "github.com/Sirupsen/logrus"
 	dockerclient "github.com/docker/engine-api/client"
 	dockertypes "github.com/docker/engine-api/types"
@@ -16,18 +15,17 @@ import (
 )
 
 type DistributedRouterOptions struct {
-	ipOffset              int
-	aggressive            bool
-	localShortcut         bool
-	localGateway          bool
-	masquerade            bool
-	p2pNet                string
-	summaryNets           []string
-	transitNet            string
+	IpOffset              int
+	Aggressive            bool
+	LocalShortcut         bool
+	LocalGateway          bool
+	Masquerade            bool
+	P2pNet                string
+	SummaryNets           []string
+	TransitNet            string
 }
 
 type DistributedRouter struct {
-	DistributedRouterOptions
 	dc                    *dockerclient.Client
 	selfContainer         dockertypes.ContainerJSON
 	networks              map[string]*drNetwork
@@ -37,12 +35,20 @@ type DistributedRouter struct {
 	pid                   int
 	p2p                   p2pNetwork
 	summaryNets           []net.IPNet
+	ipOffset              int
+	aggressive            bool
+	localShortcut         bool
+	localGateway          bool
+	masquerade            bool
+	p2pNet                string
+	transitNet            string
+	transitNetID          string
 }
 
 func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter, error) {
 	var err error
 
-	if len(options.transitNet) == 0 && !options.aggressive {
+	if len(options.TransitNet) == 0 && !options.Aggressive {
 		return &DistributedRouter{}, errors.New("--aggressive=false, and no --transit-net was found.")
 	}
 
@@ -75,99 +81,76 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 	}
 
 	//process options for assumptions and validity
-	lsc := options.localShortcut
-	lgw := options.localGateway
-	if options.masquerade {
-		log.Debug("--masquerade=true. Assuming --local-gateway and --local-shortcut.")
+	lsc := options.LocalShortcut
+	lgw := options.LocalGateway
+	if options.Masquerade {
+		log.Debug("Detected --masquerade. Assuming --local-gateway and --local-shortcut.")
 		lsc = true
 		lgw = true
 	} else {
 		if lgw {
-			log.Debug("--local-gateway=true. Assuming --local-shortcut.")
+			log.Debug("Detected --local-gateway. Assuming --local-shortcut.")
 			lsc = true
 		}
 	}
 
+	//TODO: parse and set summary networks
+
 	//create our DistributedRouter object
 	dr := &DistributedRouter{
-		DistributedRouterOptions:DistributedRouterOptions{
-			ipOffset: options.ipOffset,
-			aggressive: options.aggressive,
-			localShortcut: lsc,
-			localGateway: lgw,
-			masquerade: options.masquerade,
-		},
 		dc: docker,
 		selfNamespace: sns,
 		hostNamespace: hns,
 		pid: pid,
+		ipOffset: options.IpOffset,
+		aggressive: options.Aggressive,
+		localShortcut: lsc,
+		localGateway: lgw,
+		masquerade: options.Masquerade,
 	}
 	
 	err = dr.updateSelfContainer()
 	if err != nil {
+		log.Error("Failed to updateSelfContainer() in NewDistributedRouter().")
 		return nil, err
 	}
 
-	//initial setup
-	if dr.localShortcut {
-		if err := dr.makeP2PLink(options.p2pNet); err != nil { return nil, err }
-		if dr.masquerade {
-			if err := insertMasqRule(); err != nil { return nil, err }
-		}
-	}
 
 	//pre-populate networks slice with existing networks
 	dr.networks = make(map[string]*drNetwork)
-	for name, settings := range dr.selfContainer.NetworkSettings.Networks {
-		ip, subnet, err := net.ParseCIDR(fmt.Sprintf("%v/%v", settings.IPAddress, settings.IPPrefixLen))
-		if err != nil { 
-			log.Errorf("Failed to parse CIDR: %v/%v", settings.IPAddress, settings.IPPrefixLen)
+	log.Debug("Leaving all connected currently networks.")
+	for _, settings := range dr.selfContainer.NetworkSettings.Networks {
+		err := dr.drNetworkDisconnect(settings.NetworkID)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+	}
+	log.Debug("Completed leaving networks.")
+
+	//initial setup
+	if dr.localShortcut {
+		log.Debug("--local-shortcut detected, making P2P link.")
+		if err := dr.makeP2PLink(options.P2pNet); err != nil { 
+			log.Error("Failed to makeP2PLink().")
 			return nil, err
 		}
-		
-		gateway := net.ParseIP(dr.selfContainer.NetworkSettings.Networks[settings.NetworkID].Gateway)
-
-		if name == options.transitNet {
-			dr.transitNet = settings.NetworkID
-			if len(settings.Gateway) > 0 && !dr.localGateway {
-				dr.defaultRoute = net.ParseIP(settings.Gateway)
-			}
-		}
-		
-		dr.networks[settings.NetworkID] = &drNetwork{
-			id: settings.NetworkID,
-			connected: true,
-			drouter: true,
-			subnet: subnet,
-			ip: ip,
-			gateway: gateway,
-		}
-
-		//set up initial host routing table for routeShortcut
-		if dr.localShortcut {
-			route := &netlink.Route{
-				LinkIndex: dr.p2p.hostLinkIndex,
-				Gw: dr.p2p.selfIP,
-				Dst: subnet,
-			}
-			err = dr.hostNamespace.RouteAdd(route)
-			if err != nil {
-				log.Error(err)
-				continue
+		if dr.masquerade {
+			log.Debug("--masquerade detected, inserting masquerade rule.")
+			if err := insertMasqRule(); err != nil { 
+				log.Error("Failed to insertMasqRule().")
+				return nil, err
 			}
 		}
 	}
 
-	//init running containers
-	err = dr.initContainers()
-	if err != nil {
-		log.Error(err)
-	}
-
+	log.Debug("Created new DistributedRouter, returning to main.")
 	return dr, nil
 }
 
 func (dr *DistributedRouter) Start() {
+	log.Debug("Initialization complete, Starting the router.")
+
 	//sync of docker networks to fixup initial routes and networks
 	err := dr.syncNetworks()
 	if err != nil {
@@ -176,26 +159,39 @@ func (dr *DistributedRouter) Start() {
 	
 	//ensure periodic re-sync if running aggressive mode
 	if dr.aggressive {
-		log.Info("Aggressive mode enabled")
+		log.Info("Aggressive mode enabled, watching for docker network changes.")
 		go dr.watchNetworks()
 	}
 
-
-	dr.watchEvents()
+	err = dr.watchEvents()
+	if err != nil {
+		log.Error(err)
+		log.Error("watchEvents() exited")
+	}
 }
 
 func (dr *DistributedRouter) Close() error {
 	log.Info("Cleaning Up")
-	err := dr.deinitContainers()
+	//delete all routes to me from all containers
+	//err := dr.deinitContainers()
 	if err != nil {
 		return err
 	}
 	
 	//removing the p2p network should clean up the host routes
-	return dr.removeP2PLink()
+	if dr.localShortcut {
+		err := dr.removeP2PLink()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (dr *DistributedRouter) updateSelfContainer() error {
+	log.Debug("Updating my containerJSON object.")
+
 	cgroup, err := os.Open("/proc/self/cgroup")
 	if err != nil {
 		log.Error("Error getting cgroups.")
@@ -235,7 +231,7 @@ func (dr *DistributedRouter) setDefaultRoute() error {
 			defaultSet = true
 			continue
 		} else {
-			log.Debugf("Remove default route: %v", r)
+			log.Debugf("Remove default route thru: %v", r.Gw)
 			err = dr.selfNamespace.RouteDel(&r)
 			if err != nil {
 				return err

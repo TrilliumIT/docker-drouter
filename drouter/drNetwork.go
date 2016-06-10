@@ -15,25 +15,24 @@ import (
 )
 
 type drNetwork struct {
-	id        string
 	connected bool
-	drouter   bool
-	ipam      dockernetworks.IPAM
-	ip        net.IP
-	subnet    *net.IPNet
-	gateway   net.IP
+	subnets   []*net.IPNet
 }
 
 func (dr *DistributedRouter) drNetworkConnect(n *dockertypes.NetworkResource) error {
+	log.Debugf("Connecting to network: %v", n.Name)
+
 	endpointSettings := &dockernetworks.EndpointSettings{}
-	var subnet net.IPNet
-	var ip net.IP
+	subnets := make([]*net.IPNet, len(n.IPAM.Config))
 
 	//select drouter IP for network
 	if dr.ipOffset != 0 {
-		for _, ipamconfig := range n.IPAM.Config {
-			log.Debugf("ip-offset configured")
+		var ip net.IP
+		log.Debugf("ip-offset configured to: %v", dr.ipOffset)
+		for i, ipamconfig := range n.IPAM.Config {
 			_, subnet, err := net.ParseCIDR(ipamconfig.Subnet)
+			log.Debugf("Adding subnet %v", subnet)
+			subnets[i] = subnet
 			if err != nil {
 				return err
 			}
@@ -43,7 +42,6 @@ func (dr *DistributedRouter) drNetworkConnect(n *dockertypes.NetworkResource) er
 				last := ipaddress.LastAddress(subnet)
 				ip = netaddr.IPAdd(last, dr.ipOffset)
 			}
-			log.Debugf("Setting IP to %v", ip)
 			if endpointSettings.IPAddress == "" {
 				endpointSettings.IPAddress = ip.String()
 				endpointSettings.IPAMConfig =&dockernetworks.EndpointIPAMConfig{
@@ -52,6 +50,7 @@ func (dr *DistributedRouter) drNetworkConnect(n *dockertypes.NetworkResource) er
 			} else {
 				endpointSettings.Aliases = append(endpointSettings.Aliases, ip.String())
 			}
+			log.Debugf("Adding IP %v to network %v", ip, n.Name)
 		}
 	}
 
@@ -61,28 +60,14 @@ func (dr *DistributedRouter) drNetworkConnect(n *dockertypes.NetworkResource) er
 		return err
 	}
 
-	//refresh our self
-	dr.updateSelfContainer()
-	
-	//get the gateway for our new network
-	gateway := net.ParseIP(dr.selfContainer.NetworkSettings.Networks[n.ID].Gateway)
-
 	dr.networks[n.ID] = &drNetwork{
 		connected: true,
-		drouter: true,
-		ip: ip,
-		subnet: &subnet,
-		gateway: gateway,
+		subnets: subnets,
 	}
 
-	//add this network to all container's routing tables
-	if !dr.localGateway && len(dr.summaryNets) == 0 {
-		err = dr.addNetworkRoutes(dr.networks[n.ID])
-		if err != nil {
-			return err
-		}
-	}
-	
+	//refresh our self
+	dr.updateSelfContainer()
+
 	//add routes to host for drouter if localShortcut is enabled
 	if dr.localShortcut {
 		for _, ipamconfig := range n.IPAM.Config {
@@ -102,25 +87,10 @@ func (dr *DistributedRouter) drNetworkConnect(n *dockertypes.NetworkResource) er
 		}
 	}
 
-	//ensure default route for drouter is correct
-	err = dr.setDefaultRoute()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (dr *DistributedRouter) drNetworkDisconnect(networkid string) error {
-	err := dr.dc.NetworkDisconnect(context.Background(), networkid, dr.selfContainer.ID, true)
-	if err != nil {
-		return err
-	}
-	dr.networks[networkid].connected = false
-
-	//remove network from all container's routing tables
-	if !dr.localGateway && len(dr.summaryNets) == 0 {
-		err = dr.delNetworkRoutes(dr.networks[networkid])
+	//if we managed drouters default route
+	if dr.defaultRoute != nil && !dr.defaultRoute.Equal(net.IP{}) {
+		//ensure default route for drouter is correct
+		err = dr.setDefaultRoute()
 		if err != nil {
 			return err
 		}
@@ -129,13 +99,57 @@ func (dr *DistributedRouter) drNetworkDisconnect(networkid string) error {
 	return nil
 }
 
+func (dr *DistributedRouter) drNetworkDisconnect(networkid string) error {
+	log.Debugf("Attempting to remove network: %v", networkid)
+
+	err := dr.dc.NetworkDisconnect(context.Background(), networkid, dr.selfContainer.ID, true)
+	if err != nil {
+		return err
+	}
+	log.Debugf("Disconnected from network: %v", networkid)
+
+	if _, ok := dr.networks[networkid]; !ok {
+		return nil
+	} 
+
+	dr.networks[networkid].connected = false
+
+	return nil
+}
+
 func (dr *DistributedRouter) syncNetworks() error {
+	log.Debug("Syncing networks from docker.")
+
+	syncRoutes := false
 	//get all networks from docker
 	nets, err := dr.dc.NetworkList(context.Background(), dockertypes.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
 	if err != nil {
 		log.Error("Error getting network list")
 		return err
 	}
+
+	//leave and remove invalid or missing networks
+	for id, drn := range dr.networks {
+		known := false
+		for _, network := range nets {
+			if id == network.ID {
+				known = true
+				break
+			}
+		}
+
+		if !known {
+			syncRoutes = true
+			err := dr.drNetworkDisconnect(id)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			delete(dr.networks, id)
+		}
+	}
+
+	//join and add new networks
 	for _, network := range nets {
 		drouter_str := network.Options["drouter"]
 		drouter := false
@@ -147,28 +161,41 @@ func (dr *DistributedRouter) syncNetworks() error {
 			}
 		} 
 
+		if network.Name == dr.transitNet {
+			log.Infof("Transit net %v found, and detected as ID: %v", dr.transitNet, network.ID)
+			dr.transitNetID = network.ID
+			if len(network.Options["gateway"]) > 0 && !dr.localGateway {
+				log.Debugf("Gateway option detected on transit net. Saving for default route.")
+				dr.defaultRoute = net.ParseIP(network.Options["gateway"])
+			}
+		}
+
+		connected := false
+		if n, ok := dr.networks[network.ID]; ok {
+			connected = n.connected
+		}
+
+
 		if drouter {
-			dr.networks[network.ID].drouter = true
-			if (dr.aggressive || network.ID == dr.transitNet) && !dr.networks[network.ID].connected {
-				log.Debugf("Joining Net: %+v", network)
+			if (dr.aggressive || network.ID == dr.transitNet) && !connected {
 				err := dr.drNetworkConnect(&network)
 				if err != nil {
 					log.Errorf("Error joining network: %v", network)
 					return err
 				}
-			}
-		} else {
-			dr.networks[network.ID].drouter = false
-			if dr.networks[network.ID].connected {
-				log.Debugf("Leaving Net: %+v", network)
-				err := dr.drNetworkDisconnect(network.ID)
-				if err != nil {
-					log.Errorf("Error leaving network: %v", network)
-					return err
-				}
+				syncRoutes = true
 			}
 		}
 	}
+
+	if syncRoutes {
+		err := dr.syncAllRoutes()
+		if err != nil {
+			log.Error("Failed to sync container routes after syncNetworks reported new connections.")
+			return err
+		}
+	}
+
 	return nil
 }
 

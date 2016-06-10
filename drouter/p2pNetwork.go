@@ -16,6 +16,7 @@ type p2pNetwork struct {
 }
 
 func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
+	log.Debugf("Making a p2p network for: %v", p2paddr)
 	host_link_veth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{Name: "drouter_veth0"},
 		PeerName:  "drouter_veth1",
@@ -46,6 +47,7 @@ func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
 
 	_, p2p_net, err := net.ParseCIDR(p2paddr)
 	if err != nil {
+		log.Errorf("Failed to parse the CIDR string for p2p network: %v", p2paddr)
 		return err
 	}
 	dr.p2p.network = p2p_net
