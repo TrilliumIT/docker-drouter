@@ -1,6 +1,6 @@
 FROM golang:1.5.3-wheezy
 
-MAINTAINER Clint Armstrong <clint@TrilliumITrmstrong.net>
+MAINTAINER Trillium IT <webmaster@trilliumit.com>
 
 ENV GO15VENDOREXPERIMENT 1
 
