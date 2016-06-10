@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"strings"
 	"net"
+	"time"
 	log "github.com/Sirupsen/logrus"
 	dockerclient "github.com/docker/engine-api/client"
 	dockertypes "github.com/docker/engine-api/types"
@@ -35,6 +36,7 @@ type DistributedRouter struct {
 	pid                   int
 	p2p                   p2pNetwork
 	summaryNets           []net.IPNet
+	networkTimer          *time.Timer
 	ipOffset              int
 	aggressive            bool
 	localShortcut         bool
@@ -149,9 +151,9 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 }
 
 func (dr *DistributedRouter) Start() {
-	log.Debug("Initialization complete, Starting the router.")
+	log.Info("Initialization complete, Starting the router.")
 
-	//sync of docker networks to fixup initial routes and networks
+	//sync of docker networks to connect initial routes and networks
 	err := dr.syncNetworks()
 	if err != nil {
 		log.Error("Failed to do initial network sync.")
@@ -159,8 +161,20 @@ func (dr *DistributedRouter) Start() {
 	
 	//ensure periodic re-sync if running aggressive mode
 	if dr.aggressive {
-		log.Info("Aggressive mode enabled, watching for docker network changes.")
-		go dr.watchNetworks()
+		log.Info("Aggressive mode enabled, starting networkTimer.")
+		go func() {
+			for {
+				//TODO: make syncNetwork delay a variable
+				//using timers instead of sleep allows us to stop syncing during shutdown
+				//using timers instead of tickers allows us to ensure that multiple syncNetworks() never overlap
+				dr.networkTimer = time.NewTimer(time.Second * 5)
+				<-dr.networkTimer.C
+				err := dr.syncNetworks()
+				if err != nil {
+					log.Error(err)
+				}
+			}
+		}()
 	}
 
 	err = dr.watchEvents()
@@ -172,10 +186,31 @@ func (dr *DistributedRouter) Start() {
 
 func (dr *DistributedRouter) Close() error {
 	log.Info("Cleaning Up")
-	//delete all routes to me from all containers
-	//err := dr.deinitContainers()
-	if err != nil {
-		return err
+
+	if dr.aggressive {
+		log.Debug("Stopping networkTimer.")
+		//stop the networkTimer
+		dr.networkTimer.Stop()
+	}
+
+	//leave all networks
+	for id, _ := range dr.networks {
+		err := dr.drNetworkDisconnect(id)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		delete(dr.networks, id)
+	}
+
+	if dr.localGateway {
+		//TODO: do something to replace container gateways
+	} else {
+		//sync all routes to scrub all routing tables
+		err := dr.syncAllRoutes()
+		if err != nil {
+			log.Error(err)
+		}
 	}
 	
 	//removing the p2p network should clean up the host routes

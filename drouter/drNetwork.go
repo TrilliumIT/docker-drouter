@@ -1,7 +1,6 @@
 package drouter
 
 import (
-	"time"
 	"strconv"
   "net"
   log "github.com/Sirupsen/logrus"
@@ -129,7 +128,7 @@ func (dr *DistributedRouter) syncNetworks() error {
 	}
 
 	//leave and remove invalid or missing networks
-	for id, drn := range dr.networks {
+	for id, _ := range dr.networks {
 		known := false
 		for _, network := range nets {
 			if id == network.ID {
@@ -197,17 +196,4 @@ func (dr *DistributedRouter) syncNetworks() error {
 	}
 
 	return nil
-}
-
-func (dr *DistributedRouter) watchNetworks() {
-	log.Info("Watching Networks")
-	for {
-		//TODO: make this timeout a variable
-		time.Sleep(5 * time.Second)
-
-		err := dr.syncNetworks()
-		if err != nil {
-			log.Error(err)
-		}
-	}
 }
