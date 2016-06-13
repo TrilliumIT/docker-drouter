@@ -21,19 +21,19 @@ func (dr *DistributedRouter) syncAllRoutes() error {
 	}
 
 	for _, c := range containers {
-		cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
-		if err != nil {
-			log.Error(err)
+		//skip containers running with --net=host
+		if c.HostConfig.NetworkMode == "host" {
 			continue
 		}
 
 		//don't try to set routes for ourself
-		if cjson.State.Pid == dr.pid {
+		if c.ID == dr.selfContainer.ID {
 			continue
 		}
 
-		//skip containers running with --net=host
-		if cjson.HostConfig.NetworkMode == "host" {
+		cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
+		if err != nil {
+			log.Error(err)
 			continue
 		}
 
@@ -84,6 +84,7 @@ func (dr *DistributedRouter) syncContainerRoutes(ch *netlink.Handle) error {
 		known := false
 		Networks:
 		for _, drn := range dr.networks {
+			if !drn.drouter { continue }
 			for _, sn := range drn.subnets {
 				if sn.Contains(r.Gw) {
 					//route is for a known subnet
@@ -91,11 +92,6 @@ func (dr *DistributedRouter) syncContainerRoutes(ch *netlink.Handle) error {
 					break Networks
 				}
 			}
-		}
-
-		if dr.p2p.network.Contains(r.Gw) {
-			//route is for the p2p subnet
-			known = true
 		}
 
 		if !known {
@@ -247,44 +243,164 @@ func (dr *DistributedRouter) replaceContainerGateway(ch *netlink.Handle, gw net.
 func (dr *DistributedRouter) watchEvents() error {
 	log.Debug("Watching for container events.")
 	errChan := events.Monitor(context.Background(), dr.dc, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
-		if event.Type != "network" { return }
-		if event.Action != "connect" { return }
 		// don't run on self events
 		if event.Actor.Attributes["container"] == dr.selfContainer.ID { return }
-
-		//TODO: join the network, if we are not connected
-		
-		// don't run if this network is not a "drouter" network
-		if _, ok := dr.networks[event.Actor.ID]; !ok {
-			return
-		}
+		if event.Type != "network" { return }
 
 		log.Debugf("Event.Actor: %v", event.Actor)
-
-		//get new containers info
-		containerInfo, err := dr.dc.ContainerInspect(context.Background(), event.Actor.Attributes["container"])
-		if err != nil {
-			log.Error(err)
-			return
+		
+		switch event.Action {
+			case "connect":
+				err := dr.networkConnectEvent(&event.Actor)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+			case "disconnect":
+				err := dr.networkDisconnectEvent(&event.Actor)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+			default:
+				return
 		}
-		log.Debugf("containerInfo: %v", containerInfo)
-
-		//get new container's namespace handle
-		containerHandle, err := netlinkHandleFromPid(containerInfo.State.Pid)
-		if err != nil {
-			log.Error(err)
-			return
-		}
-
-		if dr.localGateway {
-			dr.replaceContainerGateway(containerHandle, nil)
-		} else {
-			dr.syncContainerRoutes(containerHandle)
-		}
+		return
 	})
 
 	if err := <-errChan; err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// called during a network connect event
+func (dr *DistributedRouter) networkConnectEvent(ea *dockerevents.Actor) error {
+	var nr dockertypes.NetworkResource
+	var err error
+
+	// learn this network, if we don't know it yet
+	if _, ok := dr.networks[ea.ID]; !ok {
+		nr, err = dr.dc.NetworkInspect(context.Background(), ea.ID)
+		if err != nil {
+			log.Errorf("Failed to get NetworkResource for: %v", ea.ID)
+			return err
+		}
+		drouter, err := isDRouterNetwork(&nr)
+		if err != nil {
+			log.Error("Failed to determine if this is a drouter network.")
+			log.Error(err)
+			return err
+		}
+
+		dr.networks[ea.ID] = &drNetwork{
+			drouter: drouter,
+			connected: false,
+		}
+		return nil
+	}
+
+	//we dont' manage this network, leave the poor container be
+	if !dr.networks[ea.ID].drouter { return nil }
+
+	
+	//connect if we aren't already
+	if !dr.networks[ea.ID].connected {
+		//get a network resource if we don't have one yet
+		if nr.ID != ea.ID {
+			nr, err = dr.dc.NetworkInspect(context.Background(), ea.ID)
+			if err != nil {
+				log.Errorf("Failed to get NetworkResource for: %v", ea.ID)
+				return err
+			}
+		}
+		err := dr.drNetworkConnect(&nr)
+		if err != nil {
+			return err
+		}
+
+		//this is a rare case, we've started a container on a new network, which isn't yet discovered by aggressive mode
+		//in aggressive mode, the connections determine the containers' routing table, so we have to re-sync everywhere
+		if dr.aggressive {
+			//since we just connected to this network, sync All container routes
+			//(this will also sync this new container, so let it do it, then bail this function)
+			err := dr.syncAllRoutes()
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+
+	//let's push our routes into this new container
+	//get new containers info
+	containerInfo, err := dr.dc.ContainerInspect(context.Background(), ea.Attributes["container"])
+	if err != nil {
+		return err
+	}
+	log.Debugf("containerInfo: %v", containerInfo)
+
+	//get new container's namespace handle
+	containerHandle, err := netlinkHandleFromPid(containerInfo.State.Pid)
+	if err != nil {
+		return err
+	}
+
+	if dr.localGateway {
+		dr.replaceContainerGateway(containerHandle, nil)
+	} else {
+		dr.syncContainerRoutes(containerHandle)
+	}
+	return nil
+}
+
+// called during a network disconnect event
+func (dr *DistributedRouter) networkDisconnectEvent(ea *dockerevents.Actor) error {
+	// are we aware of this network?
+	if _, ok := dr.networks[ea.ID]; !ok {
+		//no, bail
+		return nil
+	}
+
+	// are we managing this network?
+	if !dr.networks[ea.ID].drouter {
+		//no, bail
+		return nil
+	}
+
+	inUse := false
+	//loop through all the containers
+	containers, err := dr.dc.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
+	if err != nil {
+		return err
+	}
+
+	Containers:
+	for _, c := range containers {
+		//skip containers running with --net=host
+		if c.HostConfig.NetworkMode == "host" {
+			continue
+		}
+
+		//ignoring if we are the ones that disconnected
+		if c.ID == dr.selfContainer.ID {
+			continue
+		}
+
+		for _, n := range c.NetworkSettings.Networks {
+			if ea.ID == n.NetworkID {
+				inUse = true
+				break Containers
+			}
+		}
+	}
+
+	if !inUse {
+		err := dr.drNetworkDisconnect(ea.ID)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
