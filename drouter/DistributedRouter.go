@@ -122,7 +122,7 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 	
 	err = dr.updateSelfContainer()
 	if err != nil {
-		log.Error("Failed to updateSelfContainer() in NewDistributedRouter().")
+		log.Error("Failed to updateSelfContainer(). I am running in a container, right?.")
 		return nil, err
 	}
 
@@ -145,18 +145,21 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 			return nil, err
 		}
 
-		//add p2p prefix to static routes
-		dr.staticRoutes = append(dr.staticRoutes, dr.p2p.network)
-		if dr.masquerade {
-			log.Debug("--masquerade detected, inserting masquerade rule.")
-			if err := insertMasqRule(); err != nil { 
-				log.Error("Failed to insertMasqRule().")
-				return nil, err
+		if dr.localGateway {
+			//add p2p prefix to static routes
+			dr.staticRoutes = append(dr.staticRoutes, dr.p2p.network)
+		} else {
+			if dr.masquerade {
+				log.Debug("--masquerade detected, inserting masquerade rule.")
+				if err := insertMasqRule(); err != nil {
+					log.Error("Failed to insertMasqRule().")
+					return nil, err
+				}
 			}
 		}
 	}
 
-	log.Debug("Created new DistributedRouter, returning to main.")
+	log.Debug("Returning our new DistributedRouter instance.")
 	return dr, nil
 }
 
@@ -174,7 +177,7 @@ func (dr *DistributedRouter) Start() {
 		log.Info("Aggressive mode enabled, starting networkTimer.")
 		go func() {
 			for {
-				//TODO: make syncNetwork delay a variable
+				//TODO: make syncNetwork delay a variable option
 				//using timers instead of sleep allows us to stop syncing during shutdown
 				//using timers instead of tickers allows us to ensure that multiple syncNetworks() never overlap
 				dr.networkTimer = time.NewTimer(time.Second * 5)

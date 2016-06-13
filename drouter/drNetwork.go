@@ -14,6 +14,7 @@ import (
 )
 
 type drNetwork struct {
+	drouter   bool
 	connected bool
 	subnets   []*net.IPNet
 }
@@ -33,7 +34,8 @@ func (dr *DistributedRouter) drNetworkConnect(n *dockertypes.NetworkResource) er
 			log.Debugf("Adding subnet %v", subnet)
 			subnets[i] = subnet
 			if err != nil {
-				return err
+				log.Error(err)
+				continue
 			}
 			if dr.ipOffset > 0 {
 				ip = netaddr.IPAdd(subnet.IP, dr.ipOffset)
@@ -49,6 +51,7 @@ func (dr *DistributedRouter) drNetworkConnect(n *dockertypes.NetworkResource) er
 			} else {
 				endpointSettings.Aliases = append(endpointSettings.Aliases, ip.String())
 			}
+			subnets[i].IP = ip
 			log.Debugf("Adding IP %v to network %v", ip, n.Name)
 		}
 	}
@@ -59,25 +62,19 @@ func (dr *DistributedRouter) drNetworkConnect(n *dockertypes.NetworkResource) er
 		return err
 	}
 
-	dr.networks[n.ID] = &drNetwork{
-		connected: true,
-		subnets: subnets,
-	}
+	dr.networks[n.ID].connected = true
+	dr.networks[n.ID].subnets = subnets
 
 	//refresh our self
 	dr.updateSelfContainer()
 
 	//add routes to host for drouter if localShortcut is enabled
 	if dr.localShortcut {
-		for _, ipamconfig := range n.IPAM.Config {
-			_, dst, err := net.ParseCIDR(ipamconfig.Subnet)
-			if err != nil {
-				return err
-			}
+		for _, sn := range subnets {
 			route := &netlink.Route{
 				LinkIndex: dr.p2p.hostLinkIndex,
 				Gw: dr.p2p.selfIP,
-				Dst: dst,
+				Dst: sn,
 			}
 			err = dr.hostNamespace.RouteAdd(route)
 			if err != nil {
@@ -112,12 +109,43 @@ func (dr *DistributedRouter) drNetworkDisconnect(networkid string) error {
 	} 
 
 	dr.networks[networkid].connected = false
-
 	return nil
 }
 
 func (dr *DistributedRouter) syncNetworks() error {
 	log.Debug("Syncing networks from docker.")
+
+	contNetworks := make(map[string]struct{}, 0)
+	//in aggressive mode, we don't care where containers are connected
+	if !dr.aggressive {
+		//Build a list of networks for which we have running contaners
+		containers, err := dr.dc.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
+		if err != nil {
+			return err
+		}
+
+		for _, c := range containers {
+			//skip containers running with --net=host
+			if c.HostConfig.NetworkMode == "host" {
+				continue
+			}
+
+			//don't try to set routes for ourself
+			if c.ID == dr.selfContainer.ID {
+				continue
+			}
+
+			cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+
+			for _, network := range cjson.NetworkSettings.Networks {
+				contNetworks[network.NetworkID] = struct{}{}
+			}
+		}
+	}
 
 	syncRoutes := false
 	//get all networks from docker
@@ -127,7 +155,7 @@ func (dr *DistributedRouter) syncNetworks() error {
 		return err
 	}
 
-	//leave and remove invalid or missing networks
+	//leave and remove missing networks
 	for id, _ := range dr.networks {
 		known := false
 		for _, network := range nets {
@@ -150,37 +178,53 @@ func (dr *DistributedRouter) syncNetworks() error {
 
 	//join and add new networks
 	for _, network := range nets {
-		drouter_str := network.Options["drouter"]
-		drouter := false
-		if drouter_str != "" {
-			drouter, err = strconv.ParseBool(drouter_str) 
-			if err != nil {
-				log.Errorf("Error parsing drouter option: %v", drouter_str)
-				return err
-			}
-		} 
+		//is this a drouter network
+		drouter, err := isDRouterNetwork(&network)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
 
+		//is this specified as a transit net?
+		tnet := false
 		if network.Name == dr.transitNet {
 			log.Infof("Transit net %v found, and detected as ID: %v", dr.transitNet, network.ID)
-			dr.transitNetID = network.ID
-			if len(network.Options["gateway"]) > 0 && !dr.localGateway {
-				log.Debugf("Gateway option detected on transit net. Saving for default route.")
-				dr.defaultRoute = net.ParseIP(network.Options["gateway"])
+			if !drouter {
+				log.Error("Transit net does not have the drouter option set, ignoring transit net.")
+				if !dr.aggressive {
+					log.Fatal("Transit net was ignored, and we are not in aggressive mode. Dying.")
+				}
+			} else {
+				dr.transitNetID = network.ID
+				tnet = true
+				//if transit net has a gateway, make it drouter's default route
+				if len(network.Options["gateway"]) > 0 && !dr.localGateway {
+					log.Debugf("Gateway option detected on transit net. Saving for default route.")
+					dr.defaultRoute = net.ParseIP(network.Options["gateway"])
+				}
 			}
 		}
 
+		//are we currently connected to this network?
 		connected := false
 		if n, ok := dr.networks[network.ID]; ok {
 			connected = n.connected
+		} else {
+			dr.networks[network.ID] = &drNetwork{
+				drouter: drouter,
+				connected: false,
+			}
 		}
 
+		//is this a container connected network?
+		_, cnet := contNetworks[network.ID]
 
 		if drouter {
-			if (dr.aggressive || network.ID == dr.transitNet) && !connected {
+			if (cnet || tnet || dr.aggressive) && !connected {
 				err := dr.drNetworkConnect(&network)
 				if err != nil {
 					log.Errorf("Error joining network: %v", network)
-					return err
+					continue
 				}
 				syncRoutes = true
 			}
@@ -196,4 +240,18 @@ func (dr *DistributedRouter) syncNetworks() error {
 	}
 
 	return nil
+}
+
+func isDRouterNetwork(n *dockertypes.NetworkResource) (bool, error) {
+	//parse docker network drouter option
+	drouter_str := n.Options["drouter"]
+	if drouter_str != "" {
+		drouter, err := strconv.ParseBool(drouter_str) 
+		if err != nil {
+			log.Errorf("Error parsing drouter option %v, for network: %v", drouter_str, n.ID)
+			return false, err
+		}
+		return drouter, nil
+	}
+	return false, nil
 }
