@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
 	log "github.com/Sirupsen/logrus"
 	"github.com/TrilliumIT/docker-drouter/drouter"
 	"github.com/codegangsta/cli"
@@ -25,9 +24,9 @@ func main() {
 		Value: 0,
 		Usage: "",
 	}
-	var flagAggressive = cli.BoolTFlag{
-		Name: "aggressive",
-		Usage: "Set true to make drouter automatically connect to all docker networks with the 'drouter' option set",
+	var flagNoAggressive = cli.BoolFlag{
+		Name: "no-aggressive",
+		Usage: "Set false to make drouter only connect to docker networks with local containers.",
 	}
   var flagLocalShortcut = cli.BoolFlag{
 		Name: "local-shortcut",
@@ -52,7 +51,7 @@ func main() {
 	}
 	var flagTransitNet = cli.StringFlag{
 		Name: "transit-net",
-		Usage: "Set a transit network for drouter to always connect to. Network must have 'drouter' option set. If network has a gateway, and --local-gateway=false, drouter's default gateway will be through this network's gateway. (this option is required when --aggressive=false)",
+		Usage: "Set a transit network for drouter to always connect to. Network must have 'drouter' option set. If network has a gateway, and --local-gateway=false, drouter's default gateway will be through this network's gateway. (this option is required with --no-aggressive)",
 	}
 	app := cli.NewApp()
 	app.Name = "docker-drouter"
@@ -61,7 +60,7 @@ func main() {
 	app.Flags = []cli.Flag{
 		flagDebug,
 		flagIPOffset,
-		flagAggressive,
+		flagNoAggressive,
 		flagLocalShortcut,
 		flagLocalGateway,
 		flagMasquerade,
@@ -89,7 +88,7 @@ func Run(ctx *cli.Context) {
 
 	opts := &drouter.DistributedRouterOptions{
 		IpOffset: ctx.Int("ip-offset"),
-		Aggressive: ctx.Bool("aggressive"),
+		Aggressive: !ctx.Bool("no-aggressive"),
 		LocalShortcut: ctx.Bool("local-shortcut"),
 		LocalGateway: ctx.Bool("local-gateway"),
 		Masquerade: ctx.Bool("masquerade"),
