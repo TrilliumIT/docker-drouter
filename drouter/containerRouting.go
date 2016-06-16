@@ -42,13 +42,15 @@ func (dr *DistributedRouter) addAllContainerRoutes(ch *netlink.Handle) error {
 		if !drn.connected { continue }
 
 		//add routes for all the subnets of this discovered network
+		Subnets:
 		for _, sn := range drn.subnets {
 			for _, sr := range dr.staticRoutes {
 				if sr.Contains(sn.IP) {
 					srlen, srbits := sr.Mask.Size()
 					snlen, snbits := sn.Mask.Size()
 					if srlen <= snlen && srbits == snbits {
-						break
+						log.Debugf("Skipping route %v covered by %v.", sn, sr)
+						break Subnets
 					}
 				}
 			}
@@ -200,13 +202,13 @@ func (dr *DistributedRouter) watchEvents() error {
 		
 		switch event.Action {
 			case "connect":
-				err := dr.networkConnectEvent(&event.Actor)
+				err := dr.containerNetworkConnectEvent(&event.Actor)
 				if err != nil {
 					log.Error(err)
 					return
 				}
 			case "disconnect":
-				err := dr.networkDisconnectEvent(&event.Actor)
+				err := dr.containerNetworkDisconnectEvent(&event.Actor)
 				if err != nil {
 					log.Error(err)
 					return
@@ -226,7 +228,7 @@ func (dr *DistributedRouter) watchEvents() error {
 }
 
 // called during a network connect event
-func (dr *DistributedRouter) networkConnectEvent(ea *dockerevents.Actor) error {
+func (dr *DistributedRouter) containerNetworkConnectEvent(ea *dockerevents.Actor) error {
 	//first, see if we are connected
 	if !dr.networks[ea.ID].connected {
 		//connect now, which handles adding routes
@@ -261,7 +263,7 @@ func (dr *DistributedRouter) networkConnectEvent(ea *dockerevents.Actor) error {
 }
 
 // called during a network disconnect event
-func (dr *DistributedRouter) networkDisconnectEvent(ea *dockerevents.Actor) error {
+func (dr *DistributedRouter) containerNetworkDisconnectEvent(ea *dockerevents.Actor) error {
 	//TODO: remove all routes from container, just in case it's an admin disconnect, rather than a stop
 	//TODO: then, test for other possible connections to the container, 
 	//TODO: and if so, re-install the routes through that gateway

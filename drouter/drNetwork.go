@@ -60,7 +60,17 @@ func (dr *DistributedRouter) connectNetwork(id string) error {
 
 	//if localShortcut add routes to host
 	if dr.localShortcut {
+		Subnets:
 		for _, sn := range dr.networks[id].subnets {
+			for _, sr := range dr.staticRoutes {
+				if sr.Contains(sn.IP) {
+					srlen, srbits := sr.Mask.Size()
+					snlen, snbits := sn.Mask.Size()
+					if srlen <= snlen && srbits == snbits {
+						break Subnets
+					}
+				}
+			}
 			log.Debugf("Injecting shortcut route to %v via drouter into host routing table.", sn)
 			route := &netlink.Route{
 				LinkIndex: dr.p2p.hostLinkIndex,
