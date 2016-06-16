@@ -1,58 +1,57 @@
 package drouter
 
 import (
-	"os"
-	"fmt"
 	"bufio"
-	"strings"
-	"net"
-	"time"
+	"fmt"
 	log "github.com/Sirupsen/logrus"
 	dockerclient "github.com/docker/engine-api/client"
 	dockertypes "github.com/docker/engine-api/types"
 	dockerevents "github.com/docker/engine-api/types/events"
+	"github.com/vdemeester/docker-events"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/net/context"
-	"github.com/vdemeester/docker-events"
+	"net"
+	"os"
+	"strings"
+	"time"
 )
 
 type DistributedRouterOptions struct {
-	IpOffset              int
-	Aggressive            bool
-	LocalShortcut         bool
-	LocalGateway          bool
-	Masquerade            bool
-	P2pNet                string
-	StaticRoutes          []string
-	TransitNet            string
+	IpOffset      int
+	Aggressive    bool
+	LocalShortcut bool
+	LocalGateway  bool
+	Masquerade    bool
+	P2pNet        string
+	StaticRoutes  []string
+	TransitNet    string
 }
 
 type DistributedRouter struct {
-	dc                    *dockerclient.Client
-	selfContainerID       string
-	networks              map[string]*drNetwork
-	selfNamespace         *netlink.Handle
-	hostNamespace         *netlink.Handle
-	hostUnderlay          *net.IPNet
-	defaultRoute          net.IP
-	pid                   int
-	p2p                   p2pNetwork
-	staticRoutes          []*net.IPNet
-	networkTimer          *time.Timer
-	ipOffset              int
-	aggressive            bool
-	localShortcut         bool
-	localGateway          bool
-	masquerade            bool
-	p2pNet                string
-	transitNet            string
-	transitNetID          string
+	dc              *dockerclient.Client
+	selfContainerID string
+	networks        map[string]*drNetwork
+	selfNamespace   *netlink.Handle
+	hostNamespace   *netlink.Handle
+	hostUnderlay    *net.IPNet
+	defaultRoute    net.IP
+	pid             int
+	p2p             p2pNetwork
+	staticRoutes    []*net.IPNet
+	networkTimer    *time.Timer
+	ipOffset        int
+	aggressive      bool
+	localShortcut   bool
+	localGateway    bool
+	masquerade      bool
+	p2pNet          string
+	transitNet      string
+	transitNetID    string
 }
 
 func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter, error) {
 	var err error
-
 
 	if !options.Aggressive && len(options.TransitNet) == 0 {
 		return &DistributedRouter{}, fmt.Errorf("--no-aggressive, and --transit-net was not found.")
@@ -128,25 +127,25 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 
 	//create our DistributedRouter object
 	dr := &DistributedRouter{
-		dc: docker,
-		networks: make(map[string]*drNetwork),
+		dc:              docker,
+		networks:        make(map[string]*drNetwork),
 		selfContainerID: sc.ID,
-		selfNamespace: sns,
-		hostNamespace: hns,
-		pid: pid,
-		ipOffset: options.IpOffset,
-		aggressive: options.Aggressive,
-		localShortcut: lsc,
-		localGateway: lgw,
-		masquerade: options.Masquerade,
-		staticRoutes: sroutes,
-		transitNet: options.TransitNet,
+		selfNamespace:   sns,
+		hostNamespace:   hns,
+		pid:             pid,
+		ipOffset:        options.IpOffset,
+		aggressive:      options.Aggressive,
+		localShortcut:   lsc,
+		localGateway:    lgw,
+		masquerade:      options.Masquerade,
+		staticRoutes:    sroutes,
+		transitNet:      options.TransitNet,
 	}
 
 	//initial setup
 	if dr.localShortcut {
 		log.Debug("--local-shortcut detected, making P2P link.")
-		if err := dr.makeP2PLink(options.P2pNet); err != nil { 
+		if err := dr.makeP2PLink(options.P2pNet); err != nil {
 			log.Error("Failed to makeP2PLink().")
 			return nil, err
 		}
@@ -295,7 +294,7 @@ func (dr *DistributedRouter) setDefaultRoute() error {
 
 		nr := &netlink.Route{
 			LinkIndex: r[0].LinkIndex,
-			Gw: dr.defaultRoute,
+			Gw:        dr.defaultRoute,
 		}
 
 		err = dr.selfNamespace.RouteAdd(nr)
@@ -312,7 +311,9 @@ func (dr *DistributedRouter) watchEvents() error {
 	log.Debug("Watching for container events.")
 	errChan := events.Monitor(context.Background(), dr.dc, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
 		// we currently only care about network events
-		if event.Type != "network" { return }
+		if event.Type != "network" {
+			return
+		}
 
 		// don't run on self events
 		//TODO: maybe add some logic for administrative connects/disconnects of self
@@ -337,42 +338,44 @@ func (dr *DistributedRouter) watchEvents() error {
 		}
 
 		//we dont' manage this network, ignore
-		if !dr.networks[event.Actor.ID].drouter { return }
+		if !dr.networks[event.Actor.ID].drouter {
+			return
+		}
 
 		//log.Debugf("Event.Actor: %v", event.Actor)
-		
+
 		switch event.Action {
-			case "connect":
-				if event.Actor.Attributes["container"] == dr.selfContainerID {
-					err := dr.selfNetworkConnectEvent(event.Actor.ID)
-					if err != nil {
-						log.Error(err)
-					}
-					return
-				}
-
-				err := dr.containerNetworkConnectEvent(event.Actor.Attributes["container"], event.Actor.ID)
+		case "connect":
+			if event.Actor.Attributes["container"] == dr.selfContainerID {
+				err := dr.selfNetworkConnectEvent(event.Actor.ID)
 				if err != nil {
 					log.Error(err)
-					return
 				}
-			case "disconnect":
-				if event.Actor.Attributes["container"] == dr.selfContainerID {
-					err := dr.selfNetworkDisconnectEvent(event.Actor.ID)
-					if err != nil {
-						log.Error(err)
-					}
-					return
-				}
-
-				err := dr.containerNetworkDisconnectEvent(event.Actor.Attributes["container"], event.Actor.ID)
-				if err != nil {
-					log.Error(err)
-					return
-				}
-			default:
-				//we don't handle whatever action this is (yet?)
 				return
+			}
+
+			err := dr.containerNetworkConnectEvent(event.Actor.Attributes["container"], event.Actor.ID)
+			if err != nil {
+				log.Error(err)
+				return
+			}
+		case "disconnect":
+			if event.Actor.Attributes["container"] == dr.selfContainerID {
+				err := dr.selfNetworkDisconnectEvent(event.Actor.ID)
+				if err != nil {
+					log.Error(err)
+				}
+				return
+			}
+
+			err := dr.containerNetworkDisconnectEvent(event.Actor.Attributes["container"], event.Actor.ID)
+			if err != nil {
+				log.Error(err)
+				return
+			}
+		default:
+			//we don't handle whatever action this is (yet?)
+			return
 		}
 		return
 	})
@@ -384,15 +387,18 @@ func (dr *DistributedRouter) watchEvents() error {
 	return nil
 }
 
-
 func netlinkHandleFromPid(pid int) (*netlink.Handle, error) {
-		log.Debugf("Getting NsHandle for pid: %v", pid)
-		ns, err := netns.GetFromPid(pid)
-		if err != nil { return &netlink.Handle{}, err }
-		nsh, err := netlink.NewHandleAt(ns)
-		if err != nil { return &netlink.Handle{}, err }
+	log.Debugf("Getting NsHandle for pid: %v", pid)
+	ns, err := netns.GetFromPid(pid)
+	if err != nil {
+		return &netlink.Handle{}, err
+	}
+	nsh, err := netlink.NewHandleAt(ns)
+	if err != nil {
+		return &netlink.Handle{}, err
+	}
 
-		return nsh, nil
+	return nsh, nil
 }
 
 func insertMasqRule() error {
@@ -424,24 +430,24 @@ func NetworkID(n *net.IPNet) *net.IPNet {
 		}
 
 		ipnet := &net.IPNet{
-			IP: ip2,
+			IP:   ip2,
 			Mask: n.Mask,
 		}
-		
+
 		return ipnet
 	}
 	ip2 := net.IPv4(
-		ip[0] & n.Mask[0],
-		ip[1] & n.Mask[1],
-		ip[2] & n.Mask[2],
-		ip[3] & n.Mask[3],
+		ip[0]&n.Mask[0],
+		ip[1]&n.Mask[1],
+		ip[2]&n.Mask[2],
+		ip[3]&n.Mask[3],
 	)
 
 	ipnet := &net.IPNet{
-		IP: ip2,
+		IP:   ip2,
 		Mask: n.Mask,
 	}
-	
+
 	return ipnet
 }
 
@@ -458,7 +464,7 @@ func getSelfContainer(dc *dockerclient.Client) (*dockertypes.ContainerJSON, erro
 	scanner := bufio.NewScanner(cgroup)
 	for scanner.Scan() {
 		line := strings.Split(scanner.Text(), "/")
-		id := line[len(line) - 1]
+		id := line[len(line)-1]
 		containerInfo, err := dc.ContainerInspect(context.Background(), id)
 		if err != nil {
 			log.Errorf("Error inspecting container: %v", id)

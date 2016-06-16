@@ -1,18 +1,18 @@
 package drouter
 
 import (
-  "net"
 	log "github.com/Sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"github.com/ziutek/utils/netaddr"
+	"net"
 )
 
 type p2pNetwork struct {
-	hostLinkIndex         int
-	selfLinkIndex         int
-	network               *net.IPNet
-	hostIP                net.IP
-	selfIP                net.IP
+	hostLinkIndex int
+	selfLinkIndex int
+	network       *net.IPNet
+	hostIP        net.IP
+	selfIP        net.IP
 }
 
 func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
@@ -54,7 +54,7 @@ func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
 
 	host_addr := *p2p_net
 	host_addr.IP = netaddr.IPAdd(host_addr.IP, 1)
-	host_netlink_addr := &netlink.Addr{ 
+	host_netlink_addr := &netlink.Addr{
 		IPNet: &host_addr,
 		Label: "",
 	}
@@ -66,7 +66,7 @@ func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
 
 	int_addr := *p2p_net
 	int_addr.IP = netaddr.IPAdd(int_addr.IP, 2)
-	int_netlink_addr := &netlink.Addr{ 
+	int_netlink_addr := &netlink.Addr{
 		IPNet: &int_addr,
 		Label: "",
 	}
@@ -85,16 +85,18 @@ func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	//discover host underlay address/network
 	hunderlay := &net.IPNet{}
 	hroutes, err := dr.hostNamespace.RouteList(nil, netlink.FAMILY_V4)
 	if err != nil {
 		return err
 	}
-	Hroutes:
+Hroutes:
 	for _, r := range hroutes {
-		if r.Gw != nil { continue }
+		if r.Gw != nil {
+			continue
+		}
 		link, err := dr.hostNamespace.LinkByIndex(r.LinkIndex)
 		if err != nil {
 			return err
@@ -104,7 +106,9 @@ func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
 			return err
 		}
 		for _, addr := range addrs {
-			if !addr.IP.Equal(r.Src) { continue }
+			if !addr.IP.Equal(r.Src) {
+				continue
+			}
 			hunderlay.IP = addr.IP
 			hunderlay.Mask = addr.Mask
 			break Hroutes
@@ -118,8 +122,8 @@ func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
 
 	hroute := &netlink.Route{
 		LinkIndex: int_link.Attrs().Index,
-		Dst: NetworkID(hunderlay),
-		Gw: host_addr.IP,
+		Dst:       NetworkID(hunderlay),
+		Gw:        host_addr.IP,
 	}
 
 	log.Debug("Adding drouter route to %v via %v.", hroute.Dst, hroute.Gw)
@@ -139,9 +143,9 @@ func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
 		}
 		sroute := &netlink.Route{
 			LinkIndex: host_link.Attrs().Index,
-			Dst: sr,
-			Gw: int_addr.IP,
-			Src: hunderlay.IP,
+			Dst:       sr,
+			Gw:        int_addr.IP,
+			Src:       hunderlay.IP,
 		}
 
 		log.Infof("Adding host route to %v via %v.", sroute.Dst, sroute.Gw)

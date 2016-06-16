@@ -2,14 +2,14 @@ package drouter
 
 import (
 	"fmt"
-	"net"
-	"strings"
 	log "github.com/Sirupsen/logrus"
 	dockertypes "github.com/docker/engine-api/types"
 	dockerevents "github.com/docker/engine-api/types/events"
-	"golang.org/x/net/context"
-	"github.com/vishvananda/netlink"
 	"github.com/vdemeester/docker-events"
+	"github.com/vishvananda/netlink"
+	"golang.org/x/net/context"
+	"net"
+	"strings"
 )
 
 //adds all known routes for provided container
@@ -38,11 +38,15 @@ func (dr *DistributedRouter) addAllContainerRoutes(ch *netlink.Handle) error {
 	//Unless it is covered by a static route already
 	log.Info("Syncing discovered routes.")
 	for _, drn := range dr.networks {
-		if !drn.drouter { continue }
-		if !drn.connected { continue }
+		if !drn.drouter {
+			continue
+		}
+		if !drn.connected {
+			continue
+		}
 
 		//add routes for all the subnets of this discovered network
-		Subnets:
+	Subnets:
 		for _, sn := range drn.subnets {
 			for _, sr := range dr.staticRoutes {
 				if sr.Contains(sn.IP) {
@@ -75,8 +79,8 @@ func (dr *DistributedRouter) addContainerRoute(ch *netlink.Handle, prefix *net.I
 
 	route := &netlink.Route{
 		LinkIndex: lindex[0].LinkIndex,
-		Dst: prefix,
-		Gw: gateway,
+		Dst:       prefix,
+		Gw:        gateway,
 	}
 
 	log.Infof("Adding route to %v via %v.", prefix, gateway)
@@ -106,8 +110,12 @@ func (dr *DistributedRouter) delContainerRoutes(ch *netlink.Handle, prefix *net.
 	}
 
 	for _, r := range routes {
-		if r.Dst == nil { continue }
-		if !prefix.Contains(r.Dst.IP) { continue }
+		if r.Dst == nil {
+			continue
+		}
+		if !prefix.Contains(r.Dst.IP) {
+			continue
+		}
 
 		for _, ipaddr := range ips {
 			if r.Gw.Equal(ipaddr.IP) {
@@ -154,7 +162,9 @@ func (dr *DistributedRouter) replaceContainerGateway(ch *netlink.Handle, gateway
 		return err
 	}
 
-	if gateway == nil || gateway.Equal(net.IP{}) { return nil }
+	if gateway == nil || gateway.Equal(net.IP{}) {
+		return nil
+	}
 
 	defr.Gw = gateway
 	err = ch.RouteAdd(defr)
@@ -204,7 +214,7 @@ func (dr *DistributedRouter) containerNetworkConnectEvent(containerID, networkID
 // called during a network disconnect event
 func (dr *DistributedRouter) containerNetworkDisconnectEvent(containerID, networkID string) error {
 	//TODO: remove all routes from container, just in case it's an admin disconnect, rather than a stop
-	//TODO: then, test for other possible connections to the container, 
+	//TODO: then, test for other possible connections to the container,
 	//TODO: and if so, re-install the routes through that gateway
 
 	//if not aggressive mode, then we disconnect from the network if this is the last connected container
@@ -216,10 +226,14 @@ func (dr *DistributedRouter) containerNetworkDisconnectEvent(containerID, networ
 			return err
 		}
 
-		Containers:
+	Containers:
 		for _, c := range containers {
-			if c.HostConfig.NetworkMode == "host" { continue }
-			if c.ID == dr.selfContainerID { continue }
+			if c.HostConfig.NetworkMode == "host" {
+				continue
+			}
+			if c.ID == dr.selfContainerID {
+				continue
+			}
 
 			for _, n := range c.NetworkSettings.Networks {
 				if networkID == n.NetworkID {
