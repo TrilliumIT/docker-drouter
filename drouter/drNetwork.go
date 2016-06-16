@@ -82,35 +82,36 @@ func (dr *DistributedRouter) connectNetwork(id string) error {
 		log.Error("Failed to get container list.")
 		return err
 	}
+	
+	netRs, err := dr.dc.ContainerInspect(context.Background(), id)
+	if err != nil {
+		log.Errorf("Failed to inspect network %v.", dr.networks[id].name)
+		return err
+	}
+
 	for _, c := range containers {
 		if c.HostConfig.NetworkMode == "host" { continue }
 		if c.ID == dr.selfContainerID { continue }
+
+		if _, ok := netRs.Containers[c.ID]; !ok { continue }
 		
 		log.Debugf("container: %v", c)
-		for _, nets := range c.NetworkSettings.Networks {
-			log.Debugf("networkid: %v", *nets)
-			drn, ok := dr.networks[nets.NetworkID]
-			if !ok { continue }
-			if !drn.drouter || !drn.connected { continue }
 
-			log.Debugf("Share network %v with container %v", dr.networks[id].name, c.ID)
-			cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
-			if err != nil {
-				log.Error(err)
-				continue
-			}
-			ch, err := netlinkHandleFromPid(cjson.State.Pid)
-			if err != nil {
-				log.Error(err)
-				continue
-			}
-			err = dr.addAllContainerRoutes(ch)
-			if err != nil {
-				log.Error(err)
-				continue
-			}
-			//can break here because routes only have to be installed through one path
-			break
+		log.Debugf("Share network %v with container %v", dr.networks[id].name, c.ID)
+		cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		ch, err := netlinkHandleFromPid(cjson.State.Pid)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		err = dr.addAllContainerRoutes(ch)
+		if err != nil {
+			log.Error(err)
+			continue
 		}
 	}
 
