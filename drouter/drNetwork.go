@@ -17,6 +17,7 @@ type drNetwork struct {
 	name      string
 	drouter   bool
 	connected bool
+	adminDown bool
 	subnets   []*net.IPNet
 }
 
@@ -58,102 +59,6 @@ func (dr *DistributedRouter) connectNetwork(id string) error {
 
 	dr.networks[id].connected = true
 
-	//if localShortcut add routes to host
-	if dr.localShortcut {
-		Subnets:
-		for _, sn := range dr.networks[id].subnets {
-			for _, sr := range dr.staticRoutes {
-				if sr.Contains(sn.IP) {
-					srlen, srbits := sr.Mask.Size()
-					snlen, snbits := sn.Mask.Size()
-					if srlen <= snlen && srbits == snbits {
-						break Subnets
-					}
-				}
-			}
-			log.Debugf("Injecting shortcut route to %v via drouter into host routing table.", sn)
-			route := &netlink.Route{
-				LinkIndex: dr.p2p.hostLinkIndex,
-				Gw: dr.p2p.selfIP,
-				Dst: sn,
-				Src: dr.hostUnderlay.IP,
-			}
-			err = dr.hostNamespace.RouteAdd(route)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	//ensure all local containers also connected to this new network get all of our routes installed
-	containers, err := dr.dc.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
-	if err != nil {
-		log.Error("Failed to get container list.")
-		return err
-	}
-	
-	dockerNets, err := dr.dc.NetworkList(context.Background(), dockertypes.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
-	if err != nil {
-		log.Error("Failed to list networks.")
-		return err
-	}
-
-	for _, c := range containers {
-		if c.HostConfig.NetworkMode == "host" { continue }
-		if c.ID == dr.selfContainerID { continue }
-
-		for _, dn := range dockerNets {
-			if _, ok := dr.networks[dn.ID]; !ok { continue }
-			if !dr.networks[dn.ID].connected { continue }
-			if _, ok := dn.Containers[c.ID]; !ok { continue }
-
-			if dr.localGateway {
-				if id != dn.ID { continue }
-
-				cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
-				if err != nil {
-					log.Error(err)
-					break
-				}
-				ch, err := netlinkHandleFromPid(cjson.State.Pid)
-				if err != nil {
-					log.Error(err)
-					break
-				}
-
-				gateway, err := dr.getContainerPathIP(ch)
-				if err != nil {
-					log.Error("Failed to get container path IP.")
-					log.Error(err)
-					break
-				}
-
-				err = dr.replaceContainerGateway(ch, gateway)
-				if err != nil {
-					log.Error("Failed to replace container gateway.")
-					log.Error(err)
-					break
-				}
-				break
-			} 
-
-			cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
-			if err != nil {
-				log.Error(err)
-				continue
-			}
-			ch, err := netlinkHandleFromPid(cjson.State.Pid)
-			if err != nil {
-				log.Error(err)
-				continue
-			}
-			err = dr.addAllContainerRoutes(ch)
-			if err != nil {
-				log.Error(err)
-				continue
-			}
-		}
-	}
 	return nil
 }
 
@@ -257,11 +162,12 @@ func (dr *DistributedRouter) disconnectNetwork(id string) error {
 				if err != nil {
 					log.Error(err)
 					continue
+				}
 			}
 		}
+		return nil
 	}
-	return nil
-}
+
 	err = dr.dc.NetworkDisconnect(context.Background(), id, dr.selfContainerID, true)
 	if err != nil {
 		return err
@@ -317,7 +223,7 @@ func (dr *DistributedRouter) syncNetworks() error {
 		}
 		*/
 
-		if dr.networks[dn.ID].drouter {
+		if dr.networks[dn.ID].drouter && !dr.networks[dn.ID].adminDown {
 			err := dr.connectNetwork(dn.ID)
 			if err != nil {
 				log.Error(err)
@@ -345,7 +251,7 @@ func newDRNetwork(n *dockertypes.NetworkResource) (*drNetwork, error) {
 	drouter := false
 	drouter_str := n.Options["drouter"]
 	if drouter_str != "" {
-		drouter, err = strconv.ParseBool(drouter_str) 
+		drouter, err = strconv.ParseBool(drouter_str)
 		if err != nil {
 			log.Errorf("Error parsing drouter option %v, for network: %v", drouter_str, n.ID)
 			return &drNetwork{}, err
@@ -368,8 +274,123 @@ func newDRNetwork(n *dockertypes.NetworkResource) (*drNetwork, error) {
 		name: n.Name,
 		drouter: drouter,
 		connected: false,
+		adminDown: false,
 		subnets: subnets,
 	}
 
 	return drn, nil
+}
+
+func (dr *DistributedRouter) selfNetworkConnectEvent(networkID string) error {
+	if !dr.networks[networkID].connected {
+		dr.networks[networkID].connected = true
+		dr.networks[networkID].adminDown = false
+	}
+
+	//if localShortcut add routes to host
+	if dr.localShortcut {
+		Subnets:
+		for _, sn := range dr.networks[networkID].subnets {
+			for _, sr := range dr.staticRoutes {
+				if sr.Contains(sn.IP) {
+					srlen, srbits := sr.Mask.Size()
+					snlen, snbits := sn.Mask.Size()
+					if srlen <= snlen && srbits == snbits {
+						break Subnets
+					}
+				}
+			}
+			log.Debugf("Injecting shortcut route to %v via drouter into host routing table.", sn)
+			route := &netlink.Route{
+				LinkIndex: dr.p2p.hostLinkIndex,
+				Gw: dr.p2p.selfIP,
+				Dst: sn,
+				Src: dr.hostUnderlay.IP,
+			}
+			err := dr.hostNamespace.RouteAdd(route)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	//ensure all local containers also connected to this new network get all of our routes installed
+	containers, err := dr.dc.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
+	if err != nil {
+		log.Error("Failed to get container list.")
+		return err
+	}
+	
+	dockerNets, err := dr.dc.NetworkList(context.Background(), dockertypes.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
+	if err != nil {
+		log.Error("Failed to list networks.")
+		return err
+	}
+
+	for _, c := range containers {
+		if c.HostConfig.NetworkMode == "host" { continue }
+		if c.ID == dr.selfContainerID { continue }
+
+		for _, dn := range dockerNets {
+			if _, ok := dr.networks[dn.ID]; !ok { continue }
+			if !dr.networks[dn.ID].connected { continue }
+			if _, ok := dn.Containers[c.ID]; !ok { continue }
+
+			if dr.localGateway {
+				if networkID != dn.ID { continue }
+
+				cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
+				if err != nil {
+					log.Error(err)
+					break
+				}
+				ch, err := netlinkHandleFromPid(cjson.State.Pid)
+				if err != nil {
+					log.Error(err)
+					break
+				}
+
+				gateway, err := dr.getContainerPathIP(ch)
+				if err != nil {
+					log.Error("Failed to get container path IP.")
+					log.Error(err)
+					break
+				}
+
+				err = dr.replaceContainerGateway(ch, gateway)
+				if err != nil {
+					log.Error("Failed to replace container gateway.")
+					log.Error(err)
+					break
+				}
+				break
+			} 
+
+			cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			ch, err := netlinkHandleFromPid(cjson.State.Pid)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			err = dr.addAllContainerRoutes(ch)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+		}
+	}
+	return nil
+}
+
+func (dr *DistributedRouter) selfNetworkDisconnectEvent(networkID string) error {
+	if dr.networks[networkID].connected {
+		dr.networks[networkID].connected = false
+		dr.networks[networkID].adminDown = true
+	}
+
+	return nil
 }
