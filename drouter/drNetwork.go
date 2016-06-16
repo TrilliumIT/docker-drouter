@@ -3,7 +3,6 @@ package drouter
 import (
 	"strconv"
   "net"
-	"fmt"
   log "github.com/Sirupsen/logrus"
 	dockertypes "github.com/docker/engine-api/types"
 	dockerfilters "github.com/docker/engine-api/types/filters"
@@ -83,9 +82,9 @@ func (dr *DistributedRouter) connectNetwork(id string) error {
 		return err
 	}
 	
-	netRs, err := dr.dc.ContainerInspect(context.Background(), id)
+	dockerNets, err := dr.dc.NetworkList(context.Background(), dockertypes.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
 	if err != nil {
-		log.Errorf("Failed to inspect network %v.", dr.networks[id].name)
+		log.Error("Failed to list networks.")
 		return err
 	}
 
@@ -93,28 +92,58 @@ func (dr *DistributedRouter) connectNetwork(id string) error {
 		if c.HostConfig.NetworkMode == "host" { continue }
 		if c.ID == dr.selfContainerID { continue }
 
-		if _, ok := netRs.Containers[c.ID]; !ok { continue }
-		
-		log.Debugf("container: %v", c)
+		for _, dn := range dockerNets {
+			if _, ok := dr.networks[dn.ID]; !ok { continue }
+			if !dr.networks[dn.ID].connected { continue }
+			if _, ok := dn.Containers[c.ID]; !ok { continue }
 
-		log.Debugf("Share network %v with container %v", dr.networks[id].name, c.ID)
-		cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		ch, err := netlinkHandleFromPid(cjson.State.Pid)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		err = dr.addAllContainerRoutes(ch)
-		if err != nil {
-			log.Error(err)
-			continue
+			if dr.localGateway {
+				if id != dn.ID { continue }
+
+				cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
+				if err != nil {
+					log.Error(err)
+					break
+				}
+				ch, err := netlinkHandleFromPid(cjson.State.Pid)
+				if err != nil {
+					log.Error(err)
+					break
+				}
+
+				gateway, err := dr.getContainerPathIP(ch)
+				if err != nil {
+					log.Error("Failed to get container path IP.")
+					log.Error(err)
+					break
+				}
+
+				err = dr.replaceContainerGateway(ch, gateway)
+				if err != nil {
+					log.Error("Failed to replace container gateway.")
+					log.Error(err)
+					break
+				}
+				break
+			} 
+
+			cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			ch, err := netlinkHandleFromPid(cjson.State.Pid)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			err = dr.addAllContainerRoutes(ch)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
 		}
 	}
-
 	return nil
 }
 
@@ -122,29 +151,107 @@ func (dr *DistributedRouter) connectNetwork(id string) error {
 func (dr *DistributedRouter) disconnectNetwork(id string) error {
 	log.Debugf("Attempting to remove network: %v", dr.networks[id].name)
 
-	//make sure there are no local containers on this network before we disconnect
-	//this shouldn't be possible, but I'm trying to be safe
-	localContainerConnected := false
+	//ensure all local containers routes are fixed before disconnecting
 	containers, err := dr.dc.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
 	if err != nil {
-		log.Error("Failed to get container list. Disconnect anyway.")
-	} else {
-		for _, c := range containers {
-			if c.HostConfig.NetworkMode == "host" { continue }
-			if c.ID == dr.selfContainerID { continue }
-			
-			for _, nets := range c.NetworkSettings.Networks {
-				if nets.NetworkID == id {
-					localContainerConnected = true
+		log.Error("Failed to get container list.")
+		return err
+	}
+	
+	dockerNets, err := dr.dc.NetworkList(context.Background(), dockertypes.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
+	if err != nil {
+		log.Error("Failed to list networks.")
+		return err
+	}
+
+	for _, c := range containers {
+		if c.HostConfig.NetworkMode == "host" { continue }
+		if c.ID == dr.selfContainerID { continue }
+
+		dockerNets:
+		for _, dn := range dockerNets {
+			if !dr.networks[dn.ID].connected { continue }
+			if _, ok := dn.Containers[c.ID]; !ok { continue }
+
+			if dr.localGateway {
+				if id != dn.ID { continue }
+
+				cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
+				if err != nil {
+					log.Error(err)
+					break
 				}
+				ch, err := netlinkHandleFromPid(cjson.State.Pid)
+				if err != nil {
+					log.Error(err)
+					break
+				}
+
+				croutes, err := ch.RouteList(nil, netlink.FAMILY_V4)
+				if err != nil {
+					log.Error(err)
+					break
+				}
+				for _, cr := range croutes {
+					if cr.Dst != nil { continue }
+					addrs, err := dr.selfNamespace.AddrList(nil, netlink.FAMILY_V4)
+					if err != nil {
+						log.Error(err)
+						break dockerNets
+					}
+					me := false
+					for _, addr := range addrs {
+						if addr.IP.Equal(cr.Gw) {
+							me = true
+							break
+						}
+					}
+					if !me { break dockerNets }
+				}
+
+				gateway, _, err := net.ParseCIDR(dn.Options["gateway"])
+				if err != nil {
+					log.Error(err)
+					break
+				}
+
+				err = dr.replaceContainerGateway(ch, gateway)
+				if err != nil {
+					log.Error("Failed to replace container gateway.")
+					log.Error(err)
+					break
+				}
+				break
+			} 
+
+			cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			ch, err := netlinkHandleFromPid(cjson.State.Pid)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			if id == dn.ID {
+				_, supernet, _ := net.ParseCIDR("0.0.0.0/0")
+				err := dr.delContainerRoutes(ch, supernet)
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+			}
+			for _, sn := range dr.networks[id].subnets {
+				err := dr.delContainerRoutes(ch, sn)
+				if err != nil {
+					log.Error(err)
+					continue
 			}
 		}
 	}
-
-	if localContainerConnected {
-		return fmt.Errorf("There is still a local container connected to %v. Staying connected.", dr.networks[id].name)
-	}
-
+	return nil
+}
 	err = dr.dc.NetworkDisconnect(context.Background(), id, dr.selfContainerID, true)
 	if err != nil {
 		return err

@@ -83,29 +83,6 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 		return &DistributedRouter{}, err
 	}
 
-	//discover host underlay address/network
-	hunderlay := &net.IPNet{}
-	hroutes, err := hns.RouteList(nil, netlink.FAMILY_V4)
-	if err != nil {
-		return nil, err
-	}
-	for _, r := range hroutes {
-		if r.Gw == nil {
-			link, err := hns.LinkByIndex(r.LinkIndex)
-			if err != nil {
-				return nil, err
-			}
-			addrs, err := hns.AddrList(link, netlink.FAMILY_V4)
-			if err != nil {
-				return nil, err
-			}
-			hunderlay.IP = addrs[0].IP
-			hunderlay.Mask = addrs[0].Mask
-			break
-		}
-	}
-	log.Debugf("Discovered host underlay as: %v", hunderlay)
-
 	//process options for assumptions and validity
 	lsc := options.LocalShortcut
 	lgw := options.LocalGateway
@@ -129,7 +106,6 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 		}
 		sroutes = append(sroutes, cidr)
 	}
-	sroutes = append(sroutes, NetworkID(hunderlay))
 
 	sc, err := getSelfContainer(docker)
 	if err != nil {
@@ -154,7 +130,6 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 		selfContainerID: sc.ID,
 		selfNamespace: sns,
 		hostNamespace: hns,
-		hostUnderlay: hunderlay,
 		pid: pid,
 		ipOffset: options.IpOffset,
 		aggressive: options.Aggressive,
@@ -225,48 +200,6 @@ func (dr *DistributedRouter) Close() error {
 		log.Debug("Stopping networkTimer.")
 		//stop the networkTimer
 		dr.networkTimer.Stop()
-	}
-
-	//fix container routing
-	if dr.localGateway {
-		//TODO: do something to replace container gateways
-	} else {
-		_, supernet, err := net.ParseCIDR("0.0.0.0/0")
-		if err != nil {
-			return err
-		}
-
-		//remove routes thru drouter from all containers joined to any drouter network
-		containers, err := dr.dc.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
-		if err != nil {
-			log.Error("Failed to get container list.")
-			return err
-		}
-		for _, c := range containers {
-			if c.HostConfig.NetworkMode == "host" { continue }
-			if c.ID == dr.selfContainerID { continue }
-
-			for _, nets := range c.NetworkSettings.Networks {
-				if drn, ok := dr.networks[nets.NetworkID]; ok && drn.drouter {
-					cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
-					if err != nil {
-						log.Error(err)
-						continue
-					}
-					ch, err := netlinkHandleFromPid(cjson.State.Pid)
-					if err != nil {
-						log.Error(err)
-						continue
-					}
-					//passing a supernet ensures /all/ drouter routes are removed
-					err = dr.delContainerRoutes(ch, supernet)
-					if err != nil {
-						log.Error(err)
-						continue
-					}
-				}
-			}
-		}
 	}
 
 	//leave all connected networks

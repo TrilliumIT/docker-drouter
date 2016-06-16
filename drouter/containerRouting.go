@@ -152,6 +152,8 @@ func (dr *DistributedRouter) replaceContainerGateway(ch *netlink.Handle, gateway
 		return err
 	}
 
+	if gateway == nil || gateway.Equal(net.IP{}) { return nil }
+
 	defr.Gw = gateway
 	err = ch.RouteAdd(defr)
 	if err != nil {
