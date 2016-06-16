@@ -53,8 +53,9 @@ type DistributedRouter struct {
 func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter, error) {
 	var err error
 
-	if len(options.TransitNet) == 0 && !options.Aggressive {
-		return &DistributedRouter{}, fmt.Errorf("--aggressive=false, and no --transit-net was found.")
+
+	if !options.Aggressive && len(options.TransitNet) == 0 {
+		return &DistributedRouter{}, fmt.Errorf("--no-aggressive, and --transit-net was not found.")
 	}
 
 	//get the pid of drouter
@@ -142,6 +143,37 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 	}
 
 	//initial setup
+	if len(dr.transitNet) >= 0 {
+		//is this network specified as the transit net?
+		nr, err := docker.NetworkInspect(context.Background(), dr.transitNet)
+		if err != nil {
+			log.Error("Failed to inspect network for transit net: %v", dr.transitNet)
+			return dr, err
+		}
+
+		dr.networks[nr.ID], err = newDRNetwork(&nr)
+		if err != nil {
+			log.Error("Failed to learn the transit net: %v.", nr.Name)
+			return dr, err
+		}
+
+		if !dr.networks[nr.ID].drouter {
+			log.Warning("Transit net does not have the drouter option set, but we will treat it as one anyway.")
+			dr.networks[nr.ID].drouter = true
+		}
+		dr.transitNetID = nr.ID
+		//if transit net has a gateway, make it drouter's default route
+		if len(nr.Options["gateway"]) > 0 && !dr.localGateway {
+			dr.defaultRoute = net.ParseIP(nr.Options["gateway"])
+			log.Debugf("Gateway option detected on transit net as: %v", dr.defaultRoute)
+		}
+		err = dr.connectNetwork(dr.transitNetID)
+		if err != nil {
+			log.Error("Failed to connect to transit net: %v", dr.transitNet)
+			return dr, err
+		}
+	}
+
 	if dr.localShortcut {
 		log.Debug("--local-shortcut detected, making P2P link.")
 		if err := dr.makeP2PLink(options.P2pNet); err != nil { 
@@ -311,7 +343,11 @@ func (dr *DistributedRouter) watchEvents() error {
 		switch event.Action {
 			case "connect":
 				if event.Actor.Attributes["container"] == dr.selfContainerID {
-					return dr.selfNetworkConnectEvent(event.Actor.ID)
+					err := dr.selfNetworkConnectEvent(event.Actor.ID)
+					if err != nil {
+						log.Error(err)
+					}
+					return
 				}
 
 				err := dr.containerNetworkConnectEvent(event.Actor.Attributes["container"], event.Actor.ID)
@@ -321,7 +357,11 @@ func (dr *DistributedRouter) watchEvents() error {
 				}
 			case "disconnect":
 				if event.Actor.Attributes["container"] == dr.selfContainerID {
-					return dr.selfNetworkDisconnectEvent(event.Actor.ID)
+					err := dr.selfNetworkDisconnectEvent(event.Actor.ID)
+					if err != nil {
+						log.Error(err)
+					}
+					return
 				}
 
 				err := dr.containerNetworkDisconnectEvent(event.Actor.Attributes["container"], event.Actor.ID)
