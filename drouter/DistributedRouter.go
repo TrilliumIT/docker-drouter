@@ -10,9 +10,11 @@ import (
 	log "github.com/Sirupsen/logrus"
 	dockerclient "github.com/docker/engine-api/client"
 	dockertypes "github.com/docker/engine-api/types"
+	dockerevents "github.com/docker/engine-api/types/events"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/net/context"
+	"github.com/vdemeester/docker-events"
 )
 
 type DistributedRouterOptions struct {
@@ -271,6 +273,76 @@ func (dr *DistributedRouter) setDefaultRoute() error {
 
 	return nil
 }
+
+// Watch for container events
+func (dr *DistributedRouter) watchEvents() error {
+	log.Debug("Watching for container events.")
+	errChan := events.Monitor(context.Background(), dr.dc, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
+		// we currently only care about network events
+		if event.Type != "network" { return }
+
+		// don't run on self events
+		//TODO: maybe add some logic for administrative connects/disconnects of self
+		//if event.Actor.Attributes["container"] == dr.selfContainerID { return }
+
+		// have we learned this network?
+		if _, ok := dr.networks[event.Actor.ID]; !ok {
+			//inspect network
+			nr, err := dr.dc.NetworkInspect(context.Background(), event.Actor.ID)
+			if err != nil {
+				log.Errorf("Failed to inspect network at: %v", event.Actor.ID)
+				log.Error(err)
+				return
+			}
+			//learn network
+			dr.networks[event.Actor.ID], err = newDRNetwork(&nr)
+			if err != nil {
+				log.Error("Failed create drNetwork after a container connected to it.")
+				log.Error(err)
+				return
+			}
+		}
+
+		//we dont' manage this network, ignore
+		if !dr.networks[event.Actor.ID].drouter { return }
+
+		//log.Debugf("Event.Actor: %v", event.Actor)
+		
+		switch event.Action {
+			case "connect":
+				if event.Actor.Attributes["container"] == dr.selfContainerID {
+					return dr.selfNetworkConnectEvent(event.Actor.ID)
+				}
+
+				err := dr.containerNetworkConnectEvent(event.Actor.Attributes["container"], event.Actor.ID)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+			case "disconnect":
+				if event.Actor.Attributes["container"] == dr.selfContainerID {
+					return dr.selfNetworkDisconnectEvent(event.Actor.ID)
+				}
+
+				err := dr.containerNetworkDisconnectEvent(event.Actor.Attributes["container"], event.Actor.ID)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+			default:
+				//we don't handle whatever action this is (yet?)
+				return
+		}
+		return
+	})
+
+	if err := <-errChan; err != nil {
+		return err
+	}
+
+	return nil
+}
+
 
 func netlinkHandleFromPid(pid int) (*netlink.Handle, error) {
 		log.Debugf("Getting NsHandle for pid: %v", pid)

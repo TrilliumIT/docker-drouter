@@ -6,10 +6,8 @@ import (
 	"strings"
 	log "github.com/Sirupsen/logrus"
 	dockertypes "github.com/docker/engine-api/types"
-	dockerevents "github.com/docker/engine-api/types/events"
 	"golang.org/x/net/context"
 	"github.com/vishvananda/netlink"
-	"github.com/vdemeester/docker-events"
 )
 
 //adds all known routes for provided container
@@ -166,78 +164,17 @@ func (dr *DistributedRouter) replaceContainerGateway(ch *netlink.Handle, gateway
 	return nil
 }
 
-// Watch for container events to add ourself to the container routing table.
-func (dr *DistributedRouter) watchEvents() error {
-	log.Debug("Watching for container events.")
-	errChan := events.Monitor(context.Background(), dr.dc, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
-		// we currently only care about network events
-		if event.Type != "network" { return }
-
-		// don't run on self events
-		//TODO: maybe add some logic for administrative connects/disconnects of self
-		if event.Actor.Attributes["container"] == dr.selfContainerID { return }
-
-		// have we learned this network?
-		if _, ok := dr.networks[event.Actor.ID]; !ok {
-			//inspect network
-			nr, err := dr.dc.NetworkInspect(context.Background(), event.Actor.ID)
-			if err != nil {
-				log.Errorf("Failed to inspect network at: %v", event.Actor.ID)
-				log.Error(err)
-				return
-			}
-			//learn network
-			dr.networks[event.Actor.ID], err = newDRNetwork(&nr)
-			if err != nil {
-				log.Error("Failed create drNetwork after a container connected to it.")
-				log.Error(err)
-				return
-			}
-		}
-
-		//we dont' manage this network, ignore
-		if !dr.networks[event.Actor.ID].drouter { return }
-
-		//log.Debugf("Event.Actor: %v", event.Actor)
-		
-		switch event.Action {
-			case "connect":
-				err := dr.containerNetworkConnectEvent(&event.Actor)
-				if err != nil {
-					log.Error(err)
-					return
-				}
-			case "disconnect":
-				err := dr.containerNetworkDisconnectEvent(&event.Actor)
-				if err != nil {
-					log.Error(err)
-					return
-				}
-			default:
-				//we don't handle whatever action this is (yet?)
-				return
-		}
-		return
-	})
-
-	if err := <-errChan; err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // called during a network connect event
-func (dr *DistributedRouter) containerNetworkConnectEvent(ea *dockerevents.Actor) error {
+func (dr *DistributedRouter) containerNetworkConnectEvent(containerID, networkID string) error {
 	//first, see if we are connected
-	if !dr.networks[ea.ID].connected {
+	if !dr.networks[networkID].connected {
 		//connect now, which handles adding routes
-		return dr.connectNetwork(ea.ID)
+		return dr.connectNetwork(networkID)
 	}
 
 	//let's push our routes into this new container
 	//get new containers info
-	containerInfo, err := dr.dc.ContainerInspect(context.Background(), ea.Attributes["container"])
+	containerInfo, err := dr.dc.ContainerInspect(context.Background(), containerID)
 	if err != nil {
 		return err
 	}
@@ -263,7 +200,7 @@ func (dr *DistributedRouter) containerNetworkConnectEvent(ea *dockerevents.Actor
 }
 
 // called during a network disconnect event
-func (dr *DistributedRouter) containerNetworkDisconnectEvent(ea *dockerevents.Actor) error {
+func (dr *DistributedRouter) containerNetworkDisconnectEvent(containerID, networkID string) error {
 	//TODO: remove all routes from container, just in case it's an admin disconnect, rather than a stop
 	//TODO: then, test for other possible connections to the container, 
 	//TODO: and if so, re-install the routes through that gateway
@@ -283,7 +220,7 @@ func (dr *DistributedRouter) containerNetworkDisconnectEvent(ea *dockerevents.Ac
 			if c.ID == dr.selfContainerID { continue }
 
 			for _, n := range c.NetworkSettings.Networks {
-				if ea.ID == n.NetworkID {
+				if networkID == n.NetworkID {
 					inUse = true
 					break Containers
 				}
@@ -291,7 +228,7 @@ func (dr *DistributedRouter) containerNetworkDisconnectEvent(ea *dockerevents.Ac
 		}
 
 		if !inUse {
-			return dr.disconnectNetwork(ea.ID)
+			return dr.disconnectNetwork(networkID)
 		}
 	}
 
