@@ -1,15 +1,15 @@
 hash: 75bdf311a08de67538ba28da9c7fa7c5c9a7a9fdbe46ecac765c4a5943ec3f44
-updated: 2016-06-01T09:37:35.315685067-04:00
+updated: 2016-06-16T14:47:38.02671448-04:00
 imports:
 - name: github.com/codegangsta/cli
-  version: 9a18ffad6c548ca4d458d4c30a8aa4d181cf92fa
+  version: 06a850dff5bf1a4104835699e31067cc8103fcf7
 - name: github.com/docker/distribution
-  version: d9c4f03bcce7a4967b5ec07d7028786c4081b890
+  version: edd7cb5249d0a45262b20bb58b838ecf4fb368bd
   subpackages:
   - reference
   - digest
 - name: github.com/docker/engine-api
-  version: dbdcba0b66ca7624c8c9d55c2201a2a5c62d8258
+  version: d4b1f372e3bfb0be0a7bf571ba290ef857affa8b
   subpackages:
   - client
   - types
@@ -21,24 +21,25 @@ imports:
   - types/container
   - types/reference
   - types/registry
+  - types/swarm
   - types/time
   - types/versions
   - types/blkiodev
   - types/strslice
 - name: github.com/docker/go-connections
-  version: c7838b258fbfa3fe88eecfb2a0e08ea0dbd6a646
+  version: 990a1a1a70b0da4c4cb70e117971a4f0babfbf1a
   subpackages:
   - sockets
   - tlsconfig
   - nat
 - name: github.com/docker/go-units
-  version: 09dda9d4b0d748c57c14048906d3d094a58ec0c9
+  version: f2d77a61e3c169b43402a0a1e84f06daf29b8190
 - name: github.com/llimllib/ipaddress
   version: 2154bde6c1739cd49c475abbcc82e3f4ff257e5e
 - name: github.com/Microsoft/go-winio
   version: 4f1a71750d95a5a8a46c40a67ffbed8129c2f138
 - name: github.com/opencontainers/runc
-  version: 4450f7c8dea183407c91c35b19051eea22dc5965
+  version: 5dc3f3576efb5262bf582217e93f86c93944374d
   subpackages:
   - libcontainer/user
 - name: github.com/Sirupsen/logrus
@@ -46,7 +47,7 @@ imports:
 - name: github.com/vdemeester/docker-events
   version: 20e6d2db238723e68197a9e3c6c34c99a9893a9c
 - name: github.com/vishvananda/netlink
-  version: 7995ff5647a22cbf0dc41bf5c0e977bdb0d5c6b7
+  version: 293adec04146bfb07bf34f75921ebc9c1ee2cd74
   subpackages:
   - nl
 - name: github.com/vishvananda/netns
@@ -61,7 +62,7 @@ imports:
   - context
   - proxy
 - name: golang.org/x/sys
-  version: 076b546753157f758b316e59bcb51e6807c04057
+  version: 62bee037599929a6e9146f29d10dd5208c43507d
   subpackages:
   - unix
   - windows
