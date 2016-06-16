@@ -4,8 +4,6 @@ import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	dockertypes "github.com/docker/engine-api/types"
-	dockerevents "github.com/docker/engine-api/types/events"
-	"github.com/vdemeester/docker-events"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/net/context"
 	"net"
