@@ -1,16 +1,16 @@
 package drouter
 
 import (
-	"strconv"
-  "net"
-  log "github.com/Sirupsen/logrus"
+	log "github.com/Sirupsen/logrus"
 	dockertypes "github.com/docker/engine-api/types"
 	dockerfilters "github.com/docker/engine-api/types/filters"
 	dockernetworks "github.com/docker/engine-api/types/network"
-	"golang.org/x/net/context"
+	"github.com/llimllib/ipaddress"
 	"github.com/vishvananda/netlink"
 	"github.com/ziutek/utils/netaddr"
-	"github.com/llimllib/ipaddress"
+	"golang.org/x/net/context"
+	"net"
+	"strconv"
 )
 
 type drNetwork struct {
@@ -41,7 +41,7 @@ func (dr *DistributedRouter) connectNetwork(id string) error {
 			}
 			if endpointSettings.IPAddress == "" {
 				endpointSettings.IPAddress = ip.String()
-				endpointSettings.IPAMConfig =&dockernetworks.EndpointIPAMConfig{
+				endpointSettings.IPAMConfig = &dockernetworks.EndpointIPAMConfig{
 					IPv4Address: ip.String(),
 				}
 			} else {
@@ -72,24 +72,34 @@ func (dr *DistributedRouter) disconnectNetwork(id string) error {
 		log.Error("Failed to get container list.")
 		return err
 	}
-	
-	dockerNets, err := dr.dc.NetworkList(context.Background(), dockertypes.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
+
+	dockerNets, err := dr.dc.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
 	if err != nil {
 		log.Error("Failed to list networks.")
 		return err
 	}
 
 	for _, c := range containers {
-		if c.HostConfig.NetworkMode == "host" { continue }
-		if c.ID == dr.selfContainerID { continue }
+		if c.HostConfig.NetworkMode == "host" {
+			continue
+		}
+		if c.ID == dr.selfContainerID {
+			continue
+		}
 
-		dockerNets:
+	dockerNets:
 		for _, dn := range dockerNets {
-			if !dr.networks[dn.ID].connected { continue }
-			if _, ok := dn.Containers[c.ID]; !ok { continue }
+			if !dr.networks[dn.ID].connected {
+				continue
+			}
+			if _, ok := dn.Containers[c.ID]; !ok {
+				continue
+			}
 
 			if dr.localGateway {
-				if id != dn.ID { continue }
+				if id != dn.ID {
+					continue
+				}
 
 				cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
 				if err != nil {
@@ -108,7 +118,9 @@ func (dr *DistributedRouter) disconnectNetwork(id string) error {
 					break
 				}
 				for _, cr := range croutes {
-					if cr.Dst != nil { continue }
+					if cr.Dst != nil {
+						continue
+					}
 					addrs, err := dr.selfNamespace.AddrList(nil, netlink.FAMILY_V4)
 					if err != nil {
 						log.Error(err)
@@ -121,7 +133,9 @@ func (dr *DistributedRouter) disconnectNetwork(id string) error {
 							break
 						}
 					}
-					if !me { break dockerNets }
+					if !me {
+						break dockerNets
+					}
 				}
 
 				gateway, _, err := net.ParseCIDR(dn.Options["gateway"])
@@ -137,7 +151,7 @@ func (dr *DistributedRouter) disconnectNetwork(id string) error {
 					break
 				}
 				break
-			} 
+			}
 
 			cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
 			if err != nil {
@@ -183,7 +197,7 @@ func (dr *DistributedRouter) syncNetworks() error {
 	log.Debug("Syncing networks from docker.")
 
 	//get all networks from docker
-	dockerNets, err := dr.dc.NetworkList(context.Background(), dockertypes.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
+	dockerNets, err := dr.dc.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
 	if err != nil {
 		log.Error("Error getting network list")
 		return err
@@ -253,11 +267,11 @@ func newDRNetwork(n *dockertypes.NetworkResource) (*drNetwork, error) {
 
 	//create the network
 	drn := &drNetwork{
-		name: n.Name,
-		drouter: drouter,
+		name:      n.Name,
+		drouter:   drouter,
 		connected: false,
 		adminDown: false,
-		subnets: subnets,
+		subnets:   subnets,
 	}
 
 	return drn, nil
@@ -271,7 +285,7 @@ func (dr *DistributedRouter) selfNetworkConnectEvent(networkID string) error {
 
 	//if localShortcut add routes to host
 	if dr.localShortcut {
-		Subnets:
+	Subnets:
 		for _, sn := range dr.networks[networkID].subnets {
 			for _, sr := range dr.staticRoutes {
 				if sr.Contains(sn.IP) {
@@ -285,9 +299,9 @@ func (dr *DistributedRouter) selfNetworkConnectEvent(networkID string) error {
 			log.Debugf("Injecting shortcut route to %v via drouter into host routing table.", sn)
 			route := &netlink.Route{
 				LinkIndex: dr.p2p.hostLinkIndex,
-				Gw: dr.p2p.selfIP,
-				Dst: sn,
-				Src: dr.hostUnderlay.IP,
+				Gw:        dr.p2p.selfIP,
+				Dst:       sn,
+				Src:       dr.hostUnderlay.IP,
 			}
 			err := dr.hostNamespace.RouteAdd(route)
 			if err != nil {
@@ -302,24 +316,36 @@ func (dr *DistributedRouter) selfNetworkConnectEvent(networkID string) error {
 		log.Error("Failed to get container list.")
 		return err
 	}
-	
-	dockerNets, err := dr.dc.NetworkList(context.Background(), dockertypes.NetworkListOptions{ Filters: dockerfilters.NewArgs(), })
+
+	dockerNets, err := dr.dc.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
 	if err != nil {
 		log.Error("Failed to list networks.")
 		return err
 	}
 
 	for _, c := range containers {
-		if c.HostConfig.NetworkMode == "host" { continue }
-		if c.ID == dr.selfContainerID { continue }
+		if c.HostConfig.NetworkMode == "host" {
+			continue
+		}
+		if c.ID == dr.selfContainerID {
+			continue
+		}
 
 		for _, dn := range dockerNets {
-			if _, ok := dr.networks[dn.ID]; !ok { continue }
-			if !dr.networks[dn.ID].connected { continue }
-			if _, ok := dn.Containers[c.ID]; !ok { continue }
+			if _, ok := dr.networks[dn.ID]; !ok {
+				continue
+			}
+			if !dr.networks[dn.ID].connected {
+				continue
+			}
+			if _, ok := dn.Containers[c.ID]; !ok {
+				continue
+			}
 
 			if dr.localGateway {
-				if networkID != dn.ID { continue }
+				if networkID != dn.ID {
+					continue
+				}
 
 				cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
 				if err != nil {
@@ -346,7 +372,7 @@ func (dr *DistributedRouter) selfNetworkConnectEvent(networkID string) error {
 					break
 				}
 				break
-			} 
+			}
 
 			cjson, err := dr.dc.ContainerInspect(context.Background(), c.ID)
 			if err != nil {
