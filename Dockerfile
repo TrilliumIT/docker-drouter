@@ -1,4 +1,4 @@
-FROM golang:1.5.3-wheezy
+FROM golang:1.6.2-wheezy
 
 MAINTAINER Trillium IT <webmaster@trilliumit.com>
 
