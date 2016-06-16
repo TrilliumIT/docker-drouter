@@ -85,6 +85,47 @@ func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
 	if err != nil {
 		return err
 	}
+	
+	//discover host underlay address/network
+	hunderlay := &net.IPNet{}
+	hroutes, err := dr.hostNamespace.RouteList(nil, netlink.FAMILY_V4)
+	if err != nil {
+		return err
+	}
+	Hroutes:
+	for _, r := range hroutes {
+		if r.Gw != nil { continue }
+		link, err := dr.hostNamespace.LinkByIndex(r.LinkIndex)
+		if err != nil {
+			return err
+		}
+		addrs, err := dr.hostNamespace.AddrList(link, netlink.FAMILY_V4)
+		if err != nil {
+			return err
+		}
+		for _, addr := range addrs {
+			if !addr.IP.Equal(r.Src) { continue }
+			hunderlay.IP = addr.IP
+			hunderlay.Mask = addr.Mask
+			break Hroutes
+		}
+	}
+
+	log.Debugf("Discovered host underlay as: %v", hunderlay)
+
+	dr.staticRoutes = append(dr.staticRoutes, NetworkID(hunderlay))
+	dr.hostUnderlay = hunderlay
+
+	hroute := &netlink.Route{
+		LinkIndex: int_link.Attrs().Index,
+		Dst: NetworkID(hunderlay),
+		Gw: host_addr.IP,
+	}
+
+	err = dr.selfNamespace.RouteAdd(hroute)
+	if err != nil {
+		return err
+	}
 
 	if dr.localGateway {
 		dr.defaultRoute = host_addr.IP
