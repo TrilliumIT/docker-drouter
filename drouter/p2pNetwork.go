@@ -122,9 +122,34 @@ func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
 		Gw: host_addr.IP,
 	}
 
+	log.Debug("Adding drouter route to %v via %v.", hroute.Dst, hroute.Gw)
 	err = dr.selfNamespace.RouteAdd(hroute)
 	if err != nil {
 		return err
+	}
+
+	for _, sr := range dr.staticRoutes {
+		if hroute.Dst.Contains(sr.IP) {
+			srlen, srbits := sr.Mask.Size()
+			hrlen, hrbits := hroute.Dst.Mask.Size()
+			if hrlen <= srlen && hrbits == srbits {
+				log.Debugf("Skipping route %v covered by %v.", hroute.Dst, sr)
+				continue
+			}
+		}
+		sroute := &netlink.Route{
+			LinkIndex: host_link.Attrs().Index,
+			Dst: sr,
+			Gw: int_addr.IP,
+			Src: hunderlay.IP,
+		}
+
+		log.Infof("Adding host route to %v via %v.", sroute.Dst, sroute.Gw)
+		err = dr.hostNamespace.RouteAdd(sroute)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
 	}
 
 	if dr.localGateway {
@@ -144,5 +169,6 @@ func (dr *DistributedRouter) removeP2PLink() error {
 	if err != nil {
 		return err
 	}
+
 	return dr.hostNamespace.LinkDel(host_link)
 }
