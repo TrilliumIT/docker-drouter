@@ -205,24 +205,6 @@ func (dr *DistributedRouter) syncNetworks() error {
 			continue
 		}
 
-		//TODO: move this to initialization
-		/*
-		//is this network specified as the transit net?
-		if dn.Name == dr.transitNet {
-			log.Infof("Transit net %v found, and detected as ID: %v", dr.transitNet, dn.ID)
-			if !dr.networks[dn.ID].drouter {
-				log.Warning("Transit net does not have the drouter option set, but we will treat it as one anyway.")
-				dr.networks[dn.ID].drouter = true
-			}
-			dr.transitNetID = dn.ID
-			//if transit net has a gateway, make it drouter's default route
-			if len(dn.Options["gateway"]) > 0 && !dr.localGateway {
-				dr.defaultRoute = net.ParseIP(dn.Options["gateway"])
-				log.Debugf("Gateway option detected on transit net as: %v", dr.defaultRoute)
-			}
-		}
-		*/
-
 		if dr.networks[dn.ID].drouter && !dr.networks[dn.ID].adminDown {
 			err := dr.connectNetwork(dn.ID)
 			if err != nil {

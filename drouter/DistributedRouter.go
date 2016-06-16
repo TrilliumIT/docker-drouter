@@ -140,10 +140,29 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 		localGateway: lgw,
 		masquerade: options.Masquerade,
 		staticRoutes: sroutes,
+		transitNet: options.TransitNet,
 	}
 
 	//initial setup
-	if len(dr.transitNet) >= 0 {
+	if dr.localShortcut {
+		log.Debug("--local-shortcut detected, making P2P link.")
+		if err := dr.makeP2PLink(options.P2pNet); err != nil { 
+			log.Error("Failed to makeP2PLink().")
+			return nil, err
+		}
+
+		if !dr.localGateway {
+			if dr.masquerade {
+				log.Debug("--masquerade detected, inserting masquerade rule.")
+				if err := insertMasqRule(); err != nil {
+					log.Error("Failed to insertMasqRule().")
+					return nil, err
+				}
+			}
+		}
+	}
+
+	if len(dr.transitNet) > 0 {
 		//is this network specified as the transit net?
 		nr, err := docker.NetworkInspect(context.Background(), dr.transitNet)
 		if err != nil {
@@ -171,24 +190,6 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 		if err != nil {
 			log.Error("Failed to connect to transit net: %v", dr.transitNet)
 			return dr, err
-		}
-	}
-
-	if dr.localShortcut {
-		log.Debug("--local-shortcut detected, making P2P link.")
-		if err := dr.makeP2PLink(options.P2pNet); err != nil { 
-			log.Error("Failed to makeP2PLink().")
-			return nil, err
-		}
-
-		if !dr.localGateway {
-			if dr.masquerade {
-				log.Debug("--masquerade detected, inserting masquerade rule.")
-				if err := insertMasqRule(); err != nil {
-					log.Error("Failed to insertMasqRule().")
-					return nil, err
-				}
-			}
 		}
 	}
 

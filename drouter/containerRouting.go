@@ -6,8 +6,10 @@ import (
 	"strings"
 	log "github.com/Sirupsen/logrus"
 	dockertypes "github.com/docker/engine-api/types"
+	dockerevents "github.com/docker/engine-api/types/events"
 	"golang.org/x/net/context"
 	"github.com/vishvananda/netlink"
+	"github.com/vdemeester/docker-events"
 )
 
 //adds all known routes for provided container
