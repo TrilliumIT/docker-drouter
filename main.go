@@ -1,12 +1,12 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
 	log "github.com/Sirupsen/logrus"
 	"github.com/TrilliumIT/docker-drouter/drouter"
 	"github.com/codegangsta/cli"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 const (
@@ -20,37 +20,37 @@ func main() {
 		Usage: "Enable debugging.",
 	}
 	var flagIPOffset = cli.IntFlag{
-		Name: "ip-offset",
+		Name:  "ip-offset",
 		Value: 0,
 		Usage: "",
 	}
 	var flagNoAggressive = cli.BoolFlag{
-		Name: "no-aggressive",
+		Name:  "no-aggressive",
 		Usage: "Set false to make drouter only connect to docker networks with local containers.",
 	}
-  var flagLocalShortcut = cli.BoolFlag{
-		Name: "local-shortcut",
+	var flagLocalShortcut = cli.BoolFlag{
+		Name:  "local-shortcut",
 		Usage: "Set true to insert routes in the host destined for docker networks pointing to drouter over a host<->drouter p2p link.",
 	}
-  var flagLocalGateway = cli.BoolFlag{
-		Name: "local-gateway",
+	var flagLocalGateway = cli.BoolFlag{
+		Name:  "local-gateway",
 		Usage: "Set true to insert a default route on drouter pointing to the host over the host<->drouter p2p link. (implies --local-shortcut)",
 	}
 	var flagMasquerade = cli.BoolFlag{
-		Name: "masquerade",
+		Name:  "masquerade",
 		Usage: "Set true to masquerade container traffic to it's host's interface IP address.",
 	}
 	var flagP2PNet = cli.StringFlag{
-		Name: "p2p-net",
+		Name:  "p2p-net",
 		Value: "172.29.255.252/30",
 		Usage: "Use this option to customize the network used for the host<->drouter p2p link.",
 	}
-  var flagStaticRoutes = cli.StringSliceFlag{
-		Name: "static-route",
+	var flagStaticRoutes = cli.StringSliceFlag{
+		Name:  "static-route",
 		Usage: "Specify one or many CIDR addresses that will be installed as routes via drouter to all containers.",
 	}
 	var flagTransitNet = cli.StringFlag{
-		Name: "transit-net",
+		Name:  "transit-net",
 		Usage: "Set a transit network for drouter to always connect to. Network must have 'drouter' option set. If network has a gateway, and --local-gateway=false, drouter's default gateway will be through this network's gateway. (this option is required with --no-aggressive)",
 	}
 	app := cli.NewApp()
@@ -78,7 +78,7 @@ func Run(ctx *cli.Context) {
 		//ForceColors: false,
 		//DisableColors: true,
 		DisableTimestamp: false,
-		FullTimestamp: true,
+		FullTimestamp:    true,
 	})
 
 	if ctx.Bool("debug") {
@@ -87,17 +87,17 @@ func Run(ctx *cli.Context) {
 	}
 
 	opts := &drouter.DistributedRouterOptions{
-		IpOffset: ctx.Int("ip-offset"),
-		Aggressive: !ctx.Bool("no-aggressive"),
+		IpOffset:      ctx.Int("ip-offset"),
+		Aggressive:    !ctx.Bool("no-aggressive"),
 		LocalShortcut: ctx.Bool("local-shortcut"),
-		LocalGateway: ctx.Bool("local-gateway"),
-		Masquerade: ctx.Bool("masquerade"),
-		P2pNet: ctx.String("p2p-net"),
-		StaticRoutes: ctx.StringSlice("static-route"),
-		TransitNet: ctx.String("transit-net"),
+		LocalGateway:  ctx.Bool("local-gateway"),
+		Masquerade:    ctx.Bool("masquerade"),
+		P2pNet:        ctx.String("p2p-net"),
+		StaticRoutes:  ctx.StringSlice("static-route"),
+		TransitNet:    ctx.String("transit-net"),
 	}
 
-  dr, err := drouter.NewDistributedRouter(opts)
+	dr, err := drouter.NewDistributedRouter(opts)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func Run(ctx *cli.Context) {
 		}
 		os.Exit(0)
 	}()
-	
+
 	dr.Start()
 	log.Debug("This space is intenionally left blank.")
 }
