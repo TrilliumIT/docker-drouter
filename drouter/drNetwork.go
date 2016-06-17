@@ -23,6 +23,7 @@ type drNetwork struct {
 
 //connects to a drNetwork
 func (dr *DistributedRouter) connectNetwork(id string) error {
+	dr.networksLock.RLock()
 	log.Debugf("Connecting to network: %v", dr.networks[id].name)
 
 	endpointSettings := &dockernetworks.EndpointSettings{}
@@ -50,21 +51,25 @@ func (dr *DistributedRouter) connectNetwork(id string) error {
 			log.Debugf("Adding IP %v to network %v", ip, dr.networks[id].name)
 		}
 	}
-
+	dr.networksLock.RUnlock()
 	//connect to network
 	err := dr.dc.NetworkConnect(context.Background(), id, dr.selfContainerID, endpointSettings)
 	if err != nil {
 		return err
 	}
 
+	dr.networksLock.Lock()
 	dr.networks[id].connected = true
+	dr.networksLock.Unlock()
 
 	return nil
 }
 
 //disconnects from this drNetwork
 func (dr *DistributedRouter) disconnectNetwork(id string) error {
+	dr.networksLock.RLock()
 	log.Debugf("Attempting to remove network: %v", dr.networks[id].name)
+	dr.networksLock.RUnlock()
 
 	//ensure all local containers routes are fixed before disconnecting
 	containers, err := dr.dc.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
@@ -89,7 +94,7 @@ func (dr *DistributedRouter) disconnectNetwork(id string) error {
 
 	dockerNets:
 		for _, dn := range dockerNets {
-			if !dr.networks[dn.ID].connected {
+			if !dr.networkIsConnected(dn.ID) {
 				continue
 			}
 			if _, ok := dn.Containers[c.ID]; !ok {
@@ -171,6 +176,7 @@ func (dr *DistributedRouter) disconnectNetwork(id string) error {
 					continue
 				}
 			}
+			dr.networksLock.RLock()
 			for _, sn := range dr.networks[id].subnets {
 				err := dr.delContainerRoutes(ch, sn)
 				if err != nil {
@@ -178,6 +184,7 @@ func (dr *DistributedRouter) disconnectNetwork(id string) error {
 					continue
 				}
 			}
+			dr.networksLock.RUnlock()
 		}
 		return nil
 	}
@@ -186,9 +193,13 @@ func (dr *DistributedRouter) disconnectNetwork(id string) error {
 	if err != nil {
 		return err
 	}
+	dr.networksLock.RLock()
 	log.Debugf("Disconnected from network: %v", dr.networks[id].name)
+	dr.networksLock.RUnlock()
 
+	dr.networksLock.Lock()
 	dr.networks[id].connected = false
+	dr.networksLock.Unlock()
 	return nil
 }
 
@@ -205,21 +216,35 @@ func (dr *DistributedRouter) syncNetworks() error {
 
 	//learn the docker networks
 	for _, dn := range dockerNets {
+		if dn.Name == dr.transitNet {
+			continue
+		}
+
 		var err error
 		//do we know about this network already?
-		if _, ok := dr.networks[dn.ID]; !ok {
+		dr.networksLock.RLock()
+		_, ok := dr.networks[dn.ID]
+		dr.networksLock.RUnlock()
+
+		if !ok {
 			//no, create it
+			dr.networksLock.Lock()
 			dr.networks[dn.ID], err = newDRNetwork(&dn)
+			dr.networksLock.Unlock()
 			if err != nil {
 				return err
 			}
 		}
 
-		if dr.networks[dn.ID].connected {
+		if dr.networkIsConnected(dn.ID) {
 			continue
 		}
 
-		if dr.networks[dn.ID].drouter && !dr.networks[dn.ID].adminDown {
+		dr.networksLock.RLock()
+		doConnect := dr.networks[dn.ID].drouter && !dr.networks[dn.ID].adminDown
+		dr.networksLock.RUnlock()
+
+		if doConnect {
 			err := dr.connectNetwork(dn.ID)
 			if err != nil {
 				log.Error(err)
@@ -278,13 +303,16 @@ func newDRNetwork(n *dockertypes.NetworkResource) (*drNetwork, error) {
 }
 
 func (dr *DistributedRouter) selfNetworkConnectEvent(networkID string) error {
-	if !dr.networks[networkID].connected {
+	if !dr.networkIsConnected(networkID) {
+		dr.networksLock.Lock()
 		dr.networks[networkID].connected = true
 		dr.networks[networkID].adminDown = false
+		dr.networksLock.Unlock()
 	}
 
 	//if localShortcut add routes to host
 	if dr.localShortcut {
+		dr.networksLock.RLock()
 	Subnets:
 		for _, sn := range dr.networks[networkID].subnets {
 			for _, sr := range dr.staticRoutes {
@@ -308,6 +336,7 @@ func (dr *DistributedRouter) selfNetworkConnectEvent(networkID string) error {
 				return err
 			}
 		}
+		dr.networksLock.RUnlock()
 	}
 
 	//ensure all local containers also connected to this new network get all of our routes installed
@@ -332,10 +361,13 @@ func (dr *DistributedRouter) selfNetworkConnectEvent(networkID string) error {
 		}
 
 		for _, dn := range dockerNets {
-			if _, ok := dr.networks[dn.ID]; !ok {
+			dr.networksLock.RLock()
+			_, ok := dr.networks[dn.ID]
+			dr.networksLock.RUnlock()
+			if !ok {
 				continue
 			}
-			if !dr.networks[dn.ID].connected {
+			if !dr.networkIsConnected(dn.ID) {
 				continue
 			}
 			if _, ok := dn.Containers[c.ID]; !ok {
@@ -395,10 +427,59 @@ func (dr *DistributedRouter) selfNetworkConnectEvent(networkID string) error {
 }
 
 func (dr *DistributedRouter) selfNetworkDisconnectEvent(networkID string) error {
-	if dr.networks[networkID].connected {
+	if dr.networkIsConnected(networkID) {
+		dr.networksLock.Lock()
 		dr.networks[networkID].connected = false
 		dr.networks[networkID].adminDown = true
+		dr.networksLock.Unlock()
 	}
 
 	return nil
+}
+
+func (dr *DistributedRouter) initTransitNet(transitNetName string) error {
+	//is this network specified as the transit net?
+	nr, err := dr.dc.NetworkInspect(context.Background(), dr.transitNet)
+	if err != nil {
+		log.Error("Failed to inspect network for transit net: %v", dr.transitNet)
+		return err
+	}
+
+	dr.networksLock.Lock()
+	defer dr.networksLock.Unlock()
+	dr.networks[nr.ID], err = newDRNetwork(&nr)
+	if err != nil {
+		log.Error("Failed to learn the transit net: %v.", nr.Name)
+		return err
+	}
+
+	if !dr.networks[nr.ID].drouter {
+		log.Warning("Transit net does not have the drouter option set, but we will treat it as one anyway.")
+		dr.networks[nr.ID].drouter = true
+	}
+	dr.transitNetID = nr.ID
+	//if transit net has a gateway, make it drouter's default route
+	if len(nr.Options["gateway"]) > 0 && !dr.localGateway {
+		dr.defaultRoute = net.ParseIP(nr.Options["gateway"])
+		log.Debugf("Gateway option detected on transit net as: %v", dr.defaultRoute)
+	}
+	err = dr.connectNetwork(dr.transitNetID)
+	if err != nil {
+		log.Error("Failed to connect to transit net: %v", dr.transitNet)
+		return err
+	}
+
+	return nil
+}
+
+func (dr *DistributedRouter) networkIsConnected(networkID string) bool {
+	dr.networksLock.RLock()
+	defer dr.networksLock.RUnlock()
+	return dr.networks[networkID].connected
+}
+
+func (dr *DistributedRouter) networkIsDRouter(networkID string) bool {
+	dr.networksLock.RLock()
+	defer dr.networksLock.RUnlock()
+	return dr.networks[networkID].drouter
 }

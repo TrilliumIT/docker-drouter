@@ -35,6 +35,8 @@ func (dr *DistributedRouter) addAllContainerRoutes(ch *netlink.Handle) error {
 	//Loop through all discovered networks, ensure each one is installed in the container
 	//Unless it is covered by a static route already
 	log.Info("Syncing discovered routes.")
+	dr.networksLock.RLock()
+	defer dr.networksLock.RUnlock()
 	for _, drn := range dr.networks {
 		if !drn.drouter {
 			continue
@@ -177,7 +179,7 @@ func (dr *DistributedRouter) replaceContainerGateway(ch *netlink.Handle, gateway
 // called during a network connect event
 func (dr *DistributedRouter) containerNetworkConnectEvent(containerID, networkID string) error {
 	//first, see if we are connected
-	if !dr.networks[networkID].connected {
+	if !dr.networkIsConnected(networkID) {
 		//connect now, which handles adding routes
 		return dr.connectNetwork(networkID)
 	}
