@@ -114,6 +114,10 @@ func Run(ctx *cli.Context) {
 		os.Exit(0)
 	}()
 
-	dr.Start()
+	err = dr.Start()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	log.Debug("This space is intenionally left blank.")
 }

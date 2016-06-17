@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -32,6 +33,7 @@ type DistributedRouter struct {
 	dc              *dockerclient.Client
 	selfContainerID string
 	networks        map[string]*drNetwork
+	networksLock    *sync.RWMutex
 	selfNamespace   *netlink.Handle
 	hostNamespace   *netlink.Handle
 	hostUnderlay    *net.IPNet
@@ -161,42 +163,11 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 		}
 	}
 
-	if len(dr.transitNet) > 0 {
-		//is this network specified as the transit net?
-		nr, err := docker.NetworkInspect(context.Background(), dr.transitNet)
-		if err != nil {
-			log.Error("Failed to inspect network for transit net: %v", dr.transitNet)
-			return dr, err
-		}
-
-		dr.networks[nr.ID], err = newDRNetwork(&nr)
-		if err != nil {
-			log.Error("Failed to learn the transit net: %v.", nr.Name)
-			return dr, err
-		}
-
-		if !dr.networks[nr.ID].drouter {
-			log.Warning("Transit net does not have the drouter option set, but we will treat it as one anyway.")
-			dr.networks[nr.ID].drouter = true
-		}
-		dr.transitNetID = nr.ID
-		//if transit net has a gateway, make it drouter's default route
-		if len(nr.Options["gateway"]) > 0 && !dr.localGateway {
-			dr.defaultRoute = net.ParseIP(nr.Options["gateway"])
-			log.Debugf("Gateway option detected on transit net as: %v", dr.defaultRoute)
-		}
-		err = dr.connectNetwork(dr.transitNetID)
-		if err != nil {
-			log.Error("Failed to connect to transit net: %v", dr.transitNet)
-			return dr, err
-		}
-	}
-
 	log.Debug("Returning our new DistributedRouter instance.")
 	return dr, nil
 }
 
-func (dr *DistributedRouter) Start() {
+func (dr *DistributedRouter) Start() error {
 	log.Info("Initialization complete, Starting the router.")
 
 	//ensure periodic re-sync if running aggressive mode
@@ -220,11 +191,25 @@ func (dr *DistributedRouter) Start() {
 		//loop over all local containers and connect to those nets
 	}
 
-	err := dr.watchEvents()
-	if err != nil {
-		log.Error(err)
-		log.Error("watchEvents() exited")
+	eventChan := make(chan error)
+	go func() {
+		eventChan <- dr.watchEvents()
+		close(eventChan)
+	}()
+
+	if len(dr.transitNet) > 0 {
+		err := dr.initTransitNet(dr.transitNet)
+		if err != nil {
+			return err
+		}
 	}
+
+	err := <-eventChan
+	if err != nil {
+		log.Error("watchEvents() exited")
+		return err
+	}
+	return nil
 }
 
 func (dr *DistributedRouter) Close() error {
@@ -237,14 +222,22 @@ func (dr *DistributedRouter) Close() error {
 	}
 
 	//leave all connected networks
+	discs := make([]string, 0)
+	dr.networksLock.RLock()
 	for id, drn := range dr.networks {
 		if drn.connected {
-			err := dr.disconnectNetwork(id)
-			if err != nil {
-				log.Errorf("Failed to leave network: %v", drn.name)
-				log.Error(err)
-				continue
-			}
+			discs = append(discs, id)
+		}
+	}
+	dr.networksLock.RUnlock()
+	for _, id := range discs {
+		err := dr.disconnectNetwork(id)
+		if err != nil {
+			dr.networksLock.RLock()
+			log.Errorf("Failed to leave network: %v", dr.networks[id].name)
+			dr.networksLock.RUnlock()
+			log.Error(err)
+			continue
 		}
 	}
 
@@ -320,7 +313,11 @@ func (dr *DistributedRouter) watchEvents() error {
 		//if event.Actor.Attributes["container"] == dr.selfContainerID { return }
 
 		// have we learned this network?
-		if _, ok := dr.networks[event.Actor.ID]; !ok {
+		dr.networksLock.RLock()
+		_, ok := dr.networks[event.Actor.ID]
+		dr.networksLock.RUnlock()
+
+		if !ok {
 			//inspect network
 			nr, err := dr.dc.NetworkInspect(context.Background(), event.Actor.ID)
 			if err != nil {
@@ -329,7 +326,9 @@ func (dr *DistributedRouter) watchEvents() error {
 				return
 			}
 			//learn network
+			dr.networksLock.Lock()
 			dr.networks[event.Actor.ID], err = newDRNetwork(&nr)
+			dr.networksLock.Unlock()
 			if err != nil {
 				log.Error("Failed create drNetwork after a container connected to it.")
 				log.Error(err)
@@ -338,7 +337,7 @@ func (dr *DistributedRouter) watchEvents() error {
 		}
 
 		//we dont' manage this network, ignore
-		if !dr.networks[event.Actor.ID].drouter {
+		if !dr.networkIsDRouter(event.Actor.ID) {
 			return
 		}
 
