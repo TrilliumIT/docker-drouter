@@ -7,11 +7,10 @@ import (
 
 var ()
 
-func mainLoop() {
+func mainLoop(shutdown chan string) {
 	aggressiveTick := make(chan string)
 	dockerEvent := make(chan *events.Message)
 	routeSub := make(chan *netlink.RouteUpdate)
-	shutdown := make(chan string)
 
 	for {
 		select {
