@@ -145,7 +145,7 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 	//initial setup
 	if dr.localShortcut {
 		log.Debug("--local-shortcut detected, making P2P link.")
-		if err := dr.makeP2PLink(options.P2pNet); err != nil {
+		if err := makeP2PLink(dr, options.P2pNet); err != nil {
 			log.Error("Failed to makeP2PLink().")
 			return nil, err
 		}
@@ -196,7 +196,13 @@ func NewDistributedRouter(options *DistributedRouterOptions) (*DistributedRouter
 	return dr, nil
 }
 
-func (dr *DistributedRouter) Start() {
+func Start(o *DistributedRouterOptions) {
+	dr, err := newDistributedRouter(o)
+	if err != nil {
+		log.Error("Error initializing")
+		return err
+	}
+
 	log.Info("Initialization complete, Starting the router.")
 
 	//ensure periodic re-sync if running aggressive mode

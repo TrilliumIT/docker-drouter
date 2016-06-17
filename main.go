@@ -97,11 +97,6 @@ func Run(ctx *cli.Context) {
 		TransitNet:    ctx.String("transit-net"),
 	}
 
-	dr, err := drouter.NewDistributedRouter(opts)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	signal.Notify(c, syscall.SIGTERM)
@@ -114,6 +109,6 @@ func Run(ctx *cli.Context) {
 		os.Exit(0)
 	}()
 
-	dr.Start()
+	drouter.Start(opts)
 	log.Debug("This space is intenionally left blank.")
 }

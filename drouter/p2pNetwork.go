@@ -15,7 +15,7 @@ type p2pNetwork struct {
 	selfIP        net.IP
 }
 
-func (dr *DistributedRouter) makeP2PLink(p2paddr string) error {
+func makeP2PLink(dr *DistributedRouter, p2paddr string) error {
 	log.Debugf("Making a p2p network for: %v", p2paddr)
 	host_link_veth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{Name: "drouter_veth0"},
