@@ -31,11 +31,6 @@ func helloSender(c *net.UDPConn) {
 	}
 }
 
-func helloReactor(src *net.UDPAddr, n int, b []byte) {
-	log.Println(n, "bytes read from", src)
-	log.Println(hex.Dump(b[:n]))
-}
-
 func helloListener(addr *net.UDPAddr, lSrc string, h func(*net.UDPAddr, int, []byte)) {
 	l, err := net.ListenMulticastUDP("udp", nil, addr)
 	if err != nil {
@@ -55,4 +50,9 @@ func helloListener(addr *net.UDPAddr, lSrc string, h func(*net.UDPAddr, int, []b
 		}
 		go h(src, n, b)
 	}
+}
+
+func helloReactor(src *net.UDPAddr, n int, b []byte) {
+	log.Println(n, "bytes read from", src)
+	log.Println(hex.Dump(b[:n]))
 }
