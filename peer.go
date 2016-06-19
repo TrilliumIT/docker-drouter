@@ -143,6 +143,10 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 				}
 				close(s.del)
 				disconnectPeer <- c.RemoteAddr().String()
+				err := delAllRoutesVia(c.RemoteAddr())
+				if err != nil {
+					log.Errorf("Failed to delete all routes via %v", c.RemoteAddr())
+				}
 			}()
 
 			// Send updates to this peer
@@ -174,7 +178,12 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 						return
 					}
 					// TODO Process external message
-					log.Infof("Recieved update %v from %v", string(b[:n]), c.RemoteAddr())
+					log.Debugf("Recieved update %v from %v", string(b[:n]), c.RemoteAddr())
+					err = processRoute(b[:n], c.RemoteAddr())
+					if err != nil {
+						log.Errorf("Failed to process route: %v", string(b[:n]))
+						continue
+					}
 				}
 			}()
 		}
