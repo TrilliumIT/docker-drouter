@@ -86,8 +86,8 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 		for {
 			c := *<-peerCh
 
-			var b []byte
-			_, err := c.Read(b)
+			b := make([]byte, 512)
+			n, err := c.Read(b)
 			if err != nil {
 				log.Errorf("Failed to read tcp hello")
 				log.Error(err)
@@ -95,9 +95,9 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 			}
 
 			h := &hello{}
-			err = json.Unmarshal(b, h)
+			err = json.Unmarshal(b[:n], h)
 			if err != nil {
-				log.Error("Unable to unmarshall tcp hello")
+				log.Error("Unable to unmarshall hello")
 				log.Error(err)
 				return
 			}
@@ -146,8 +146,8 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 			// Recieve messages from this peer
 			go func() {
 				for {
-					var b []byte
-					_, err := c.Read(b)
+					b := make([]byte, 512)
+					n, err := c.Read(b)
 					if err != nil {
 						log.Error("Failed to read from c")
 						log.Error(err)
@@ -155,7 +155,7 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 						return
 					}
 					// TODO Process external message
-					log.Infof("Recieved update %v from %v", string(b), c.RemoteAddr())
+					log.Infof("Recieved update %v from %v", string(b[:n]), c.RemoteAddr())
 				}
 			}()
 		}

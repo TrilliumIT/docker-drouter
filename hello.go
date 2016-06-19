@@ -31,8 +31,8 @@ func startHello(connectPeer chan<- string, hc chan<- []byte) {
 		Instance:   *instance,
 	}
 
-	helloMsg := make([]byte, 512)
-	helloMsg, err = json.Marshal(msg)
+	//helloMsg := make([]byte, 512)
+	helloMsg, err := json.Marshal(msg)
 	if err != nil {
 		log.Error("Unable to marshall hello")
 		log.Fatal(err)
@@ -61,17 +61,19 @@ func startHello(connectPeer chan<- string, hc chan<- []byte) {
 	l.SetReadBuffer(512)
 
 	for {
+		//var b []byte
 		b := make([]byte, 512)
-		_, src, err := l.ReadFromUDP(b)
+		n, src, err := l.ReadFromUDP(b)
 		if err != nil {
 			log.Fatal("ReadFromUDP failed:", err)
 			continue
 		}
 
 		h := &hello{}
-		err = json.Unmarshal(b, h)
+		err = json.Unmarshal(b[:n], h)
 		if err != nil {
 			log.Error("Unable to unmarshall hello")
+			log.Errorf("Data: %v", string(b[:n]))
 			log.Error(err)
 			continue
 		}
