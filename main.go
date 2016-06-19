@@ -13,31 +13,17 @@ const (
 )
 
 func main() {
-	/*
-		Create a channel that the UDP sender will use to notify the
-		UDP reciever of what the source address is.
-		That way the UDP reciever can know to ignore packets
-		sent by this local sender.
-	*/
-	helloSrcChan := make(chan string)
-	go helloSender(srvAddr, helloSrcChan)
-	helloListener(srvAddr, helloReactor, helloSrcChan)
-}
-
-func helloSender(a string, sc chan<- string) {
-	addr, err := net.ResolveUDPAddr("udp", a)
+	mcastAddr, err := net.ResolveUDPAddr("udp", srvAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	c, err := net.DialUDP("udp", nil, addr)
-	// Send the source address to the reciever routine
-	sc <- c.LocalAddr().String()
-	// Block until the reciever has read the source
-	// Tested, this does not busy CPU
-	for len(sc) > 0 {
-	}
-	close(sc)
 
+	c, err := net.DialUDP("udp", nil, mcastAddr)
+	go helloSender(c)
+	helloListener(mcastAddr, c.LocalAddr().String(), helloReactor)
+}
+
+func helloSender(c *net.UDPConn) {
 	// Send hello every second
 	for {
 		c.Write([]byte("hello, world\n"))
@@ -50,17 +36,13 @@ func helloReactor(src *net.UDPAddr, n int, b []byte) {
 	log.Println(hex.Dump(b[:n]))
 }
 
-func helloListener(a string, h func(*net.UDPAddr, int, []byte), sc <-chan string) {
-	addr, err := net.ResolveUDPAddr("udp", a)
+func helloListener(addr *net.UDPAddr, lSrc string, h func(*net.UDPAddr, int, []byte)) {
+	l, err := net.ListenMulticastUDP("udp", nil, addr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	l, err := net.ListenMulticastUDP("udp", nil, addr)
 	l.SetReadBuffer(maxDatagramSize)
 
-	// Get the source addres used by sender, so we can ignore it.
-	// Includes source port
-	lSrc := <-sc
 	for {
 		b := make([]byte, maxDatagramSize)
 		n, src, err := l.ReadFromUDP(b)
