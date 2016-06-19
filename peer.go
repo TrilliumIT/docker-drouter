@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	log "github.com/Sirupsen/logrus"
 	"net"
+	"strconv"
+	"time"
 )
 
 type subscriber struct {
@@ -10,27 +13,98 @@ type subscriber struct {
 	del chan struct{}
 }
 
-func startPeer() {
-	var subscribers []*subscriber
+func startPeer(connectPeer <-chan string, hc <-chan []byte) {
+	helloMsg := <-hc
 
-	addSubscriber := make(chan *subscriber)
-	delSubscriber := make(chan int)
 	localRouteUpdate := make(chan string)
 
-	listener, err := net.Listen("tcp", ":9999")
+	// Monitor local route table changes
+	go func() {
+		for {
+			localRouteUpdate <- "Fake update"
+			time.Sleep(2 * time.Second)
+		}
+	}()
+
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(*port))
 	if err != nil {
+		log.Error("Failed to setup listener")
 		log.Error(err)
 		return
 	}
 
-	// Listen for new peers joining
+	peerCh := make(chan *net.Conn)
+	// Listen for new inbound connetions
 	go func() {
 		for {
 			c, err := listener.Accept()
 			if err != nil {
+				log.Error("Failed to accept listener")
 				log.Error(err)
 				continue
 			}
+			peerCh <- &c
+		}
+	}()
+
+	peerConnected := make(chan string)
+	disconnectPeer := make(chan string)
+	// Initiate outbound connections from discovered peers
+	go func() {
+		peers := make(map[string]struct{})
+		for {
+			log.Debugf("Current peers: %v", peers)
+			select {
+			case p := <-connectPeer:
+				if _, ok := peers[p]; !ok {
+					c, err := net.Dial("tcp", p)
+					if err != nil {
+						log.Error("Failed to dial")
+						log.Error(err)
+						continue
+					}
+					_, err = c.Write(helloMsg)
+					if err != nil {
+						log.Error("Failed to send tcp hello on connect")
+						log.Error(err)
+						continue
+					}
+					peerCh <- &c
+				}
+			case p := <-peerConnected:
+				peers[p] = struct{}{}
+			case p := <-disconnectPeer:
+				delete(peers, p)
+			}
+		}
+	}()
+
+	// Handle new peers joining
+	var subscribers []*subscriber
+	addSubscriber := make(chan *subscriber)
+	go func() {
+		for {
+			c := *<-peerCh
+
+			var b []byte
+			_, err := c.Read(b)
+			if err != nil {
+				log.Errorf("Failed to read tcp hello")
+				log.Error(err)
+				return
+			}
+
+			h := &hello{}
+			err = json.Unmarshal(b, h)
+			if err != nil {
+				log.Error("Unable to unmarshall tcp hello")
+				log.Error(err)
+				return
+			}
+
+			log.Debugf("hello recieved via tcp: %v", h)
+			peerConnected <- h.ListenAddr
+
 			// Handle messages with this peer
 			s := &subscriber{
 				cb:  make(chan string),
@@ -44,10 +118,12 @@ func startPeer() {
 			go func() {
 				select {
 				case _ = <-sendDie:
-					close(s.del)
+					break
 				case _ = <-recvDie:
-					close(s.del)
+					break
 				}
+				close(s.del)
+				disconnectPeer <- c.RemoteAddr().String()
 			}()
 
 			// Send updates to this peer
@@ -59,6 +135,7 @@ func startPeer() {
 					}
 					_, err := c.Write([]byte(r))
 					if err != nil {
+						log.Error("Failed to write to c")
 						log.Error(err)
 						close(sendDie)
 						return
@@ -72,6 +149,7 @@ func startPeer() {
 					var b []byte
 					_, err := c.Read(b)
 					if err != nil {
+						log.Error("Failed to read from c")
 						log.Error(err)
 						close(recvDie)
 						return
@@ -83,10 +161,15 @@ func startPeer() {
 		}
 	}()
 
+	delSubscriber := make(chan int)
 	// Manage listening peers
 	for {
 		select {
 		case d := <-delSubscriber:
+			if len(subscribers) <= 1 {
+				subscribers = []*subscriber{}
+				continue
+			}
 			subscribers = append(subscribers[:d], subscribers[d+1:]...)
 		case s := <-addSubscriber:
 			i := len(subscribers)

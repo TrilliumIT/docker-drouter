@@ -1,22 +1,49 @@
 package main
 
 import (
-	"encoding/hex"
+	"encoding/json"
 	log "github.com/Sirupsen/logrus"
 	"net"
+	"strconv"
 	"time"
 )
 
-func startHello() {
-	helloMsg := []byte("routeShare")
-	maxDatagramSize := len(helloMsg)
+type hello struct {
+	ListenAddr string
+	Instance   int
+}
 
+func startHello(connectPeer chan<- string, hc chan<- []byte) {
 	mcastAddr, err := net.ResolveUDPAddr("udp", "224.0.0.1:9999")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	c, err := net.DialUDP("udp", nil, mcastAddr)
+
+	lAddr, _, err := net.SplitHostPort(c.LocalAddr().String())
+	if err != nil {
+		log.Error("Failed to split host port")
+		log.Fatal(err)
+	}
+	msg := hello{
+		ListenAddr: lAddr + ":" + strconv.Itoa(*port),
+		Instance:   *instance,
+	}
+
+	helloMsg := make([]byte, 512)
+	helloMsg, err = json.Marshal(msg)
+	if err != nil {
+		log.Error("Unable to marshall hello")
+		log.Fatal(err)
+	}
+
+	hc <- helloMsg
+	for len(hc) > 0 {
+	}
+	close(hc)
+
+	log.Debugf("Json: %v", string(helloMsg))
 
 	// Send hello packets every second
 	go func() {
@@ -31,24 +58,36 @@ func startHello() {
 		log.Fatal(err)
 	}
 
-	l.SetReadBuffer(maxDatagramSize)
+	l.SetReadBuffer(512)
 
 	for {
-		b := make([]byte, maxDatagramSize)
-		n, src, err := l.ReadFromUDP(b)
+		b := make([]byte, 512)
+		_, src, err := l.ReadFromUDP(b)
 		if err != nil {
 			log.Fatal("ReadFromUDP failed:", err)
 			continue
 		}
-		if string(b) != string(helloMsg) {
-			continue
-		}
-		if src.String() == c.LocalAddr().String() {
+
+		h := &hello{}
+		err = json.Unmarshal(b, h)
+		if err != nil {
+			log.Error("Unable to unmarshall hello")
+			log.Error(err)
 			continue
 		}
 
-		log.Println(n, "bytes read from", src)
-		log.Println(hex.Dump(b[:n]))
+		if h.Instance != msg.Instance {
+			continue
+		}
+		if h.ListenAddr == msg.ListenAddr {
+			continue
+		}
+
+		log.Debugf("%v recieved from %v", string(b), src)
+		connectPeer <- h.ListenAddr
+
+		log.Debugf("%v recieved from %v", string(b), src)
+		connectPeer <- h.ListenAddr
 	}
 
 }
