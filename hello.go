@@ -63,7 +63,7 @@ func startHello(connectPeer chan<- string, hc chan<- []byte) {
 	for {
 		//var b []byte
 		b := make([]byte, 512)
-		n, src, err := l.ReadFromUDP(b)
+		n, _, err := l.ReadFromUDP(b)
 		if err != nil {
 			log.Fatal("ReadFromUDP failed:", err)
 			continue
@@ -85,10 +85,7 @@ func startHello(connectPeer chan<- string, hc chan<- []byte) {
 			continue
 		}
 
-		log.Debugf("%v recieved from %v", string(b), src)
-		connectPeer <- h.ListenAddr
-
-		log.Debugf("%v recieved from %v", string(b), src)
+		//log.Debugf("%v hello from %v", string(b), src)
 		connectPeer <- h.ListenAddr
 	}
 

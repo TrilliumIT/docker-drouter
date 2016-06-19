@@ -3,9 +3,9 @@ package main
 import (
 	"encoding/json"
 	log "github.com/Sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 	"net"
 	"strconv"
-	"time"
 )
 
 type subscriber struct {
@@ -20,9 +20,23 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 
 	// Monitor local route table changes
 	go func() {
+		rud := make(chan struct{})
+		defer close(rud)
+		ruc := make(chan netlink.RouteUpdate)
+		defer close(ruc)
+		err := netlink.RouteSubscribe(ruc, rud)
+		if err != nil {
+			log.Error("Error subscribing to route table")
+			log.Fatal(err)
+		}
 		for {
-			localRouteUpdate <- "Fake update"
-			time.Sleep(2 * time.Second)
+			ru := <-ruc
+			ruj, err := json.Marshal(ru)
+			if err != nil {
+				log.Errorf("Failed to marshal: %v", ru)
+				log.Error(err)
+			}
+			localRouteUpdate <- string(ruj)
 		}
 	}()
 
@@ -53,7 +67,6 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 	go func() {
 		peers := make(map[string]struct{})
 		for {
-			log.Debugf("Current peers: %v", peers)
 			select {
 			case p := <-connectPeer:
 				if _, ok := peers[p]; !ok {
@@ -63,18 +76,14 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 						log.Error(err)
 						continue
 					}
-					_, err = c.Write(helloMsg)
-					if err != nil {
-						log.Error("Failed to send tcp hello on connect")
-						log.Error(err)
-						continue
-					}
 					peerCh <- &c
 				}
 			case p := <-peerConnected:
 				peers[p] = struct{}{}
+				log.Debugf("Current peers: %v", peers)
 			case p := <-disconnectPeer:
 				delete(peers, p)
+				log.Debugf("Current peers: %v", peers)
 			}
 		}
 	}()
@@ -86,6 +95,15 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 		for {
 			c := *<-peerCh
 
+			// Send hello on all new tcp connections
+			_, err = c.Write(helloMsg)
+			if err != nil {
+				log.Error("Failed to send tcp hello on connect")
+				log.Error(err)
+				continue
+			}
+
+			// get corresponding hello from the other side
 			b := make([]byte, 512)
 			n, err := c.Read(b)
 			if err != nil {
@@ -97,7 +115,8 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 			h := &hello{}
 			err = json.Unmarshal(b[:n], h)
 			if err != nil {
-				log.Error("Unable to unmarshall hello")
+				log.Error("Unable to unmarshall tcp hello")
+				log.Errorf("Data: %v", string(b[:n]))
 				log.Error(err)
 				return
 			}
