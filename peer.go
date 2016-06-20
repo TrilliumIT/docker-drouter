@@ -13,7 +13,7 @@ type subscriber struct {
 	del chan struct{}
 }
 
-func startPeer(connectPeer <-chan string, hc <-chan hello) {
+func startPeer(connectPeer <-chan string, hc <-chan *hello) {
 	helloMsg := <-hc
 
 	localRouteUpdate := make(chan *exportRoute)
@@ -64,6 +64,7 @@ func startPeer(connectPeer <-chan string, hc <-chan hello) {
 				Gw:       ru.Gw,
 				Priority: ru.Priority,
 			}
+			log.Debugf("Sending route update: %v", er)
 			localRouteUpdate <- er
 		}
 	}()

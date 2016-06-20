@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/gob"
+	"encoding/json"
 	log "github.com/Sirupsen/logrus"
 	"net"
 	"strconv"
@@ -13,7 +13,7 @@ type hello struct {
 	Instance   int
 }
 
-func startHello(connectPeer chan<- string, hc chan<- hello) {
+func startHello(connectPeer chan<- string, hc chan<- *hello) {
 	mcastAddr, err := net.ResolveUDPAddr("udp", "224.0.0.1:9999")
 	if err != nil {
 		log.Fatal(err)
@@ -26,7 +26,7 @@ func startHello(connectPeer chan<- string, hc chan<- hello) {
 		log.Error("Failed to split host port")
 		log.Fatal(err)
 	}
-	helloMsg := hello{
+	helloMsg := &hello{
 		ListenAddr: lAddr + ":" + strconv.Itoa(*port),
 		Instance:   *instance,
 	}
@@ -38,7 +38,7 @@ func startHello(connectPeer chan<- string, hc chan<- hello) {
 
 	// Send hello packets every second
 	go func() {
-		e := gob.NewEncoder(c)
+		e := json.NewEncoder(c)
 		for {
 			err := e.Encode(helloMsg)
 			if err != nil {
@@ -55,12 +55,8 @@ func startHello(connectPeer chan<- string, hc chan<- hello) {
 		log.Fatal(err)
 	}
 
-	l.SetReadBuffer(512)
-
-	d := gob.NewDecoder(l)
+	d := json.NewDecoder(l)
 	for {
-		//var b []byte
-
 		h := &hello{}
 		err := d.Decode(h)
 		if err != nil {
