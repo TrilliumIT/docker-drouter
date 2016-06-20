@@ -43,6 +43,13 @@ func delAllRoutesVia(s net.Addr) error {
 	return nil
 }
 
+type exportRoute struct {
+	Type     uint16
+	Dst      *net.IPNet
+	Gw       net.IP
+	Priority int
+}
+
 func processRoute(b []byte, s net.Addr) error {
 	src, err := addrToIP(s)
 	if err != nil {
@@ -50,7 +57,7 @@ func processRoute(b []byte, s net.Addr) error {
 		return err
 	}
 
-	ru := &netlink.RouteUpdate{}
+	ru := &exportRoute{}
 	err = json.Unmarshal(b, ru)
 	if err != nil {
 		log.Errorf("Failed to unmarshall route update: %v", string(b))

@@ -35,7 +35,25 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 				// we only care about directly connected routes
 				continue
 			}
-			ruj, err := json.Marshal(ru)
+			if ru.Src.IsLoopback() {
+				continue
+			}
+			if ru.Dst.IP.IsLoopback() {
+				continue
+			}
+			if ru.Src.IsLinkLocalUnicast() {
+				continue
+			}
+			if ru.Dst.IP.IsLinkLocalUnicast() {
+				continue
+			}
+			er := &exportRoute{
+				Type:     ru.Type,
+				Dst:      ru.Dst,
+				Gw:       ru.Gw,
+				Priority: ru.Priority,
+			}
+			ruj, err := json.Marshal(er)
 			if err != nil {
 				log.Errorf("Failed to marshal: %v", ru)
 				log.Error(err)
