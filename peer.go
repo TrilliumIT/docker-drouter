@@ -57,6 +57,7 @@ func processConnectionRequest(o *procConReqOpts) {
 			log.Debugf("Current peers: %v", peers)
 		case p := <-o.disconnectPeer:
 			delete(peers, p)
+			log.Debugf("Deleted peer %v", p)
 			log.Debugf("Current peers: %v", peers)
 		}
 	}
@@ -177,12 +178,12 @@ func peerConnections(o *peerConnOpts) {
 		go func() {
 			select {
 			case _ = <-sendDie:
-				break
+				close(recvDie)
 			case _ = <-recvDie:
-				break
+				close(sendDie)
 			}
 			close(s.del)
-			o.disconnectPeer <- c.RemoteAddr().String()
+			o.disconnectPeer <- h.ListenAddr
 			err := delAllRoutesVia(c.RemoteAddr())
 			if err != nil {
 				log.Errorf("Failed to delete all routes via %v", c.RemoteAddr())
