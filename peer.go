@@ -179,19 +179,20 @@ func startPeer(connectPeer <-chan string, hc <-chan hello) {
 		// Recieve messages from this peer
 		go func() {
 			for {
-				b := make([]byte, 512)
-				n, err := c.Read(b)
+				d := gob.NewDecoder(c)
+				er := &exportRoute{}
+				err := d.Decode(er)
 				if err != nil {
-					log.Error("Failed to read from c")
+					log.Error("Failed decode route update")
 					log.Error(err)
 					close(recvDie)
 					return
 				}
-				// TODO Process external message
-				log.Debugf("Recieved update %v from %v", string(b[:n]), c.RemoteAddr())
-				err = processRoute(b[:n], c.RemoteAddr())
+
+				log.Debugf("Recieved update %v from %v", *er, c.RemoteAddr())
+				err = processRoute(er, c.RemoteAddr())
 				if err != nil {
-					log.Errorf("Failed to process route: %v", string(b[:n]))
+					log.Errorf("Failed to process route: %v", *er)
 					continue
 				}
 			}

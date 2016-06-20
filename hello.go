@@ -57,9 +57,9 @@ func startHello(connectPeer chan<- string, hc chan<- hello) {
 
 	l.SetReadBuffer(512)
 
+	d := gob.NewDecoder(l)
 	for {
 		//var b []byte
-		d := gob.NewDecoder(l)
 
 		h := &hello{}
 		err := d.Decode(h)

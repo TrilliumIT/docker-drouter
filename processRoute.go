@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	log "github.com/Sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"net"
@@ -50,20 +49,13 @@ type exportRoute struct {
 	Priority int
 }
 
-func processRoute(b []byte, s net.Addr) error {
+func processRoute(ru *exportRoute, s net.Addr) error {
 	src, err := addrToIP(s)
 	if err != nil {
 		log.Error("Error parsing IP from %v", s)
 		return err
 	}
 
-	ru := &exportRoute{}
-	err = json.Unmarshal(b, ru)
-	if err != nil {
-		log.Errorf("Failed to unmarshall route update: %v", string(b))
-		log.Error(err)
-		return err
-	}
 	addrs, err := netlink.AddrList(nil, netlink.FAMILY_ALL)
 	if err != nil {
 		log.Error("Failed to get addresses")
