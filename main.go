@@ -19,7 +19,7 @@ func main() {
 	connectPeer := make(chan string)
 	defer close(connectPeer)
 
-	helloMsg := make(chan []byte)
+	helloMsg := make(chan hello)
 
 	wg.Add(1)
 	go func() {

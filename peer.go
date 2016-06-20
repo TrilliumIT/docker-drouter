@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/gob"
 	log "github.com/Sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"net"
@@ -9,14 +9,14 @@ import (
 )
 
 type subscriber struct {
-	cb  chan string
+	cb  chan *exportRoute
 	del chan struct{}
 }
 
-func startPeer(connectPeer <-chan string, hc <-chan []byte) {
+func startPeer(connectPeer <-chan string, hc <-chan hello) {
 	helloMsg := <-hc
 
-	localRouteUpdate := make(chan string)
+	localRouteUpdate := make(chan *exportRoute)
 
 	// Monitor local route table changes
 	go func() {
@@ -53,12 +53,7 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 				Gw:       ru.Gw,
 				Priority: ru.Priority,
 			}
-			ruj, err := json.Marshal(er)
-			if err != nil {
-				log.Errorf("Failed to marshal: %v", ru)
-				log.Error(err)
-			}
-			localRouteUpdate <- string(ruj)
+			localRouteUpdate <- er
 		}
 	}()
 
@@ -114,101 +109,93 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 	var subscribers []*subscriber
 	addSubscriber := make(chan *subscriber)
 	go func() {
-		for {
-			c := *<-peerCh
+		c := *<-peerCh
 
-			// Send hello on all new tcp connections
-			_, err = c.Write(helloMsg)
-			if err != nil {
-				log.Error("Failed to send tcp hello on connect")
-				log.Error(err)
-				continue
-			}
-
-			// get corresponding hello from the other side
-			b := make([]byte, 512)
-			n, err := c.Read(b)
-			if err != nil {
-				log.Errorf("Failed to read tcp hello")
-				log.Error(err)
-				return
-			}
-
-			h := &hello{}
-			err = json.Unmarshal(b[:n], h)
-			if err != nil {
-				log.Error("Unable to unmarshall tcp hello")
-				log.Errorf("Data: %v", string(b[:n]))
-				log.Error(err)
-				return
-			}
-
-			log.Debugf("hello recieved via tcp: %v", h)
-			peerConnected <- h.ListenAddr
-
-			// Handle messages with this peer
-			s := &subscriber{
-				cb:  make(chan string),
-				del: make(chan struct{}),
-			}
-			addSubscriber <- s
-
-			// die gracefully
-			sendDie := make(chan struct{})
-			recvDie := make(chan struct{})
-			go func() {
-				select {
-				case _ = <-sendDie:
-					break
-				case _ = <-recvDie:
-					break
-				}
-				close(s.del)
-				disconnectPeer <- c.RemoteAddr().String()
-				err := delAllRoutesVia(c.RemoteAddr())
-				if err != nil {
-					log.Errorf("Failed to delete all routes via %v", c.RemoteAddr())
-				}
-			}()
-
-			// Send updates to this peer
-			go func() {
-				for {
-					r := <-s.cb
-					if r == "" { // r is closed on subscriber
-						return
-					}
-					_, err := c.Write([]byte(r))
-					if err != nil {
-						log.Error("Failed to write to c")
-						log.Error(err)
-						close(sendDie)
-						return
-					}
-				}
-			}()
-
-			// Recieve messages from this peer
-			go func() {
-				for {
-					b := make([]byte, 512)
-					n, err := c.Read(b)
-					if err != nil {
-						log.Error("Failed to read from c")
-						log.Error(err)
-						close(recvDie)
-						return
-					}
-					// TODO Process external message
-					log.Debugf("Recieved update %v from %v", string(b[:n]), c.RemoteAddr())
-					err = processRoute(b[:n], c.RemoteAddr())
-					if err != nil {
-						log.Errorf("Failed to process route: %v", string(b[:n]))
-						continue
-					}
-				}
-			}()
+		// Send hello on all new tcp connections
+		e := gob.NewEncoder(c)
+		err := e.Encode(helloMsg)
+		if err != nil {
+			log.Error("Failed to encode tcp hello on connect")
+			log.Error(err)
+			return
 		}
+
+		// get corresponding hello from the other side
+		d := gob.NewDecoder(c)
+		h := &hello{}
+		err = d.Decode(h)
+		if err != nil {
+			log.Error("Failed to decode tcp hello on connect")
+			log.Error(err)
+			return
+		}
+
+		log.Debugf("hello recieved via tcp: %v", h)
+		peerConnected <- h.ListenAddr
+
+		// Handle messages with this peer
+		s := &subscriber{
+			cb:  make(chan *exportRoute),
+			del: make(chan struct{}),
+		}
+		addSubscriber <- s
+
+		// die gracefully
+		sendDie := make(chan struct{})
+		recvDie := make(chan struct{})
+		go func() {
+			select {
+			case _ = <-sendDie:
+				break
+			case _ = <-recvDie:
+				break
+			}
+			close(s.del)
+			disconnectPeer <- c.RemoteAddr().String()
+			err := delAllRoutesVia(c.RemoteAddr())
+			if err != nil {
+				log.Errorf("Failed to delete all routes via %v", c.RemoteAddr())
+			}
+		}()
+
+		// Send updates to this peer
+		go func() {
+			e := gob.NewEncoder(c)
+			for {
+				r := <-s.cb
+				if r == nil { // r is closed on subscriber
+					return
+				}
+				err := e.Encode(r)
+				if err != nil {
+					log.Error("Failed to encode exportRoute")
+					log.Error(err)
+					close(sendDie)
+					return
+				}
+			}
+		}()
+
+		// Recieve messages from this peer
+		go func() {
+			for {
+				b := make([]byte, 512)
+				n, err := c.Read(b)
+				if err != nil {
+					log.Error("Failed to read from c")
+					log.Error(err)
+					close(recvDie)
+					return
+				}
+				// TODO Process external message
+				log.Debugf("Recieved update %v from %v", string(b[:n]), c.RemoteAddr())
+				err = processRoute(b[:n], c.RemoteAddr())
+				if err != nil {
+					log.Errorf("Failed to process route: %v", string(b[:n]))
+					continue
+				}
+			}
+		}()
 	}()
 
 	delSubscriber := make(chan int)

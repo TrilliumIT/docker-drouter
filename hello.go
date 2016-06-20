@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/gob"
 	log "github.com/Sirupsen/logrus"
 	"net"
 	"strconv"
@@ -13,7 +13,7 @@ type hello struct {
 	Instance   int
 }
 
-func startHello(connectPeer chan<- string, hc chan<- []byte) {
+func startHello(connectPeer chan<- string, hc chan<- hello) {
 	mcastAddr, err := net.ResolveUDPAddr("udp", "224.0.0.1:9999")
 	if err != nil {
 		log.Fatal(err)
@@ -26,16 +26,9 @@ func startHello(connectPeer chan<- string, hc chan<- []byte) {
 		log.Error("Failed to split host port")
 		log.Fatal(err)
 	}
-	msg := hello{
+	helloMsg := hello{
 		ListenAddr: lAddr + ":" + strconv.Itoa(*port),
 		Instance:   *instance,
-	}
-
-	//helloMsg := make([]byte, 512)
-	helloMsg, err := json.Marshal(msg)
-	if err != nil {
-		log.Error("Unable to marshall hello")
-		log.Fatal(err)
 	}
 
 	hc <- helloMsg
@@ -43,12 +36,16 @@ func startHello(connectPeer chan<- string, hc chan<- []byte) {
 	}
 	close(hc)
 
-	log.Debugf("Json: %v", string(helloMsg))
-
 	// Send hello packets every second
 	go func() {
+		e := gob.NewEncoder(c)
 		for {
-			c.Write(helloMsg)
+			err := e.Encode(helloMsg)
+			if err != nil {
+				log.Error("Failed to encode hello")
+				log.Error(err)
+				continue
+			}
 			time.Sleep(1 * time.Second)
 		}
 	}()
@@ -62,26 +59,20 @@ func startHello(connectPeer chan<- string, hc chan<- []byte) {
 
 	for {
 		//var b []byte
-		b := make([]byte, 512)
-		n, _, err := l.ReadFromUDP(b)
-		if err != nil {
-			log.Fatal("ReadFromUDP failed:", err)
-			continue
-		}
+		d := gob.NewDecoder(l)
 
 		h := &hello{}
-		err = json.Unmarshal(b[:n], h)
+		err := d.Decode(h)
 		if err != nil {
-			log.Error("Unable to unmarshall hello")
-			log.Errorf("Data: %v", string(b[:n]))
+			log.Error("Unable to decode hello")
 			log.Error(err)
 			continue
 		}
 
-		if h.Instance != msg.Instance {
+		if h.Instance != helloMsg.Instance {
 			continue
 		}
-		if h.ListenAddr == msg.ListenAddr {
+		if h.ListenAddr == helloMsg.ListenAddr {
 			continue
 		}
 
