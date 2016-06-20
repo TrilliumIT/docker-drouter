@@ -31,6 +31,10 @@ func startPeer(connectPeer <-chan string, hc <-chan []byte) {
 		}
 		for {
 			ru := <-ruc
+			if ru.Gw != nil {
+				// we only care about directly connected routes
+				continue
+			}
 			ruj, err := json.Marshal(ru)
 			if err != nil {
 				log.Errorf("Failed to marshal: %v", ru)

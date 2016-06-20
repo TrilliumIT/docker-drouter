@@ -1,0 +1,4 @@
+package: github.com/clinta/routeShare
+import:
+- package: github.com/Sirupsen/logrus
+- package: github.com/vishvananda/netlink
