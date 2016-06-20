@@ -47,6 +47,12 @@ func startPeer(connectPeer <-chan string, hc <-chan hello) {
 			if ru.Dst.IP.IsLinkLocalUnicast() {
 				continue
 			}
+			if ru.Dst.IP.IsInterfaceLocalMulticast() {
+				continue
+			}
+			if ru.Dst.IP.IsLinkLocalMulticast() {
+				continue
+			}
 			er := &exportRoute{
 				Type:     ru.Type,
 				Dst:      ru.Dst,
@@ -161,10 +167,15 @@ func startPeer(connectPeer <-chan string, hc <-chan hello) {
 		// Send updates to this peer
 		go func() {
 			e := gob.NewEncoder(c)
+			srcAddr := c.LocalAddr().(*net.TCPAddr).IP
 			for {
 				r := <-s.cb
 				if r == nil { // r is closed on subscriber
 					return
+				}
+				if (r.Dst.IP.To4 == nil) != (srcAddr.To4 == nil) {
+					// Families don't match
+					continue
 				}
 				err := e.Encode(r)
 				if err != nil {
@@ -178,12 +189,12 @@ func startPeer(connectPeer <-chan string, hc <-chan hello) {
 
 		// Recieve messages from this peer
 		go func() {
+			d := gob.NewDecoder(c)
 			for {
-				d := gob.NewDecoder(c)
 				er := &exportRoute{}
 				err := d.Decode(er)
 				if err != nil {
-					log.Error("Failed decode route update")
+					log.Error("Failed to decode route update")
 					log.Error(err)
 					close(recvDie)
 					return

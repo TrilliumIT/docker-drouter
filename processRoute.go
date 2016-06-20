@@ -12,21 +12,8 @@ type routeUpdate struct {
 	msg []byte
 }
 
-func addrToIP(s net.Addr) (net.IP, error) {
-	srcS, _, err := net.SplitHostPort(s.String())
-	if err != nil {
-		return nil, err
-	}
-	return net.ParseIP(srcS), nil
-
-}
-
 func delAllRoutesVia(s net.Addr) error {
-	src, err := addrToIP(s)
-	if err != nil {
-		log.Error("Error parsing IP from %v", s)
-		return err
-	}
+	src := s.(*net.TCPAddr).IP
 
 	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
 	if err != nil {
@@ -50,11 +37,7 @@ type exportRoute struct {
 }
 
 func processRoute(ru *exportRoute, s net.Addr) error {
-	src, err := addrToIP(s)
-	if err != nil {
-		log.Error("Error parsing IP from %v", s)
-		return err
-	}
+	src := s.(*net.TCPAddr).IP
 
 	addrs, err := netlink.AddrList(nil, netlink.FAMILY_ALL)
 	if err != nil {
