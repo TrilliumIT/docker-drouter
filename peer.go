@@ -35,6 +35,11 @@ func startPeer(connectPeer <-chan string, hc <-chan hello) {
 				// we only care about directly connected routes
 				continue
 			}
+			ones, bits := ru.Dst.Mask.Size()
+			if ones == bits {
+				// this is a /32
+				continue
+			}
 			if ru.Src.IsLoopback() {
 				continue
 			}
@@ -173,7 +178,7 @@ func startPeer(connectPeer <-chan string, hc <-chan hello) {
 				if r == nil { // r is closed on subscriber
 					return
 				}
-				if (r.Dst.IP.To4 == nil) != (srcAddr.To4 == nil) {
+				if (r.Dst.IP.To4() == nil) != (srcAddr.To4() == nil) {
 					// Families don't match
 					continue
 				}
