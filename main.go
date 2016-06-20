@@ -19,18 +19,21 @@ func main() {
 	connectPeer := make(chan string)
 	defer close(connectPeer)
 
-	helloMsg := make(chan *hello)
+	hc := make(chan *hello)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		startHello(connectPeer, hc)
+	}()
+
+	helloMsg := <-hc
+	close(hc)
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		startPeer(connectPeer, helloMsg)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		startHello(connectPeer, helloMsg)
 	}()
 
 	wg.Wait()
