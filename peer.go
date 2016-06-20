@@ -121,99 +121,101 @@ func startPeer(connectPeer <-chan string, hc <-chan *hello) {
 	var subscribers []*subscriber
 	addSubscriber := make(chan *subscriber)
 	go func() {
-		c := *<-peerCh
+		for {
+			c := *<-peerCh
 
-		// Send hello on all new tcp connections
-		e := gob.NewEncoder(c)
-		err := e.Encode(helloMsg)
-		if err != nil {
-			log.Error("Failed to encode tcp hello on connect")
-			log.Error(err)
-			return
-		}
-
-		// get corresponding hello from the other side
-		d := gob.NewDecoder(c)
-		h := &hello{}
-		err = d.Decode(h)
-		if err != nil {
-			log.Error("Failed to decode tcp hello on connect")
-			log.Error(err)
-			return
-		}
-
-		log.Debugf("hello recieved via tcp: %v", h)
-		peerConnected <- h.ListenAddr
-
-		// Handle messages with this peer
-		s := &subscriber{
-			cb:  make(chan *exportRoute),
-			del: make(chan struct{}),
-		}
-		addSubscriber <- s
-
-		// die gracefully
-		sendDie := make(chan struct{})
-		recvDie := make(chan struct{})
-		go func() {
-			select {
-			case _ = <-sendDie:
-				break
-			case _ = <-recvDie:
-				break
-			}
-			close(s.del)
-			disconnectPeer <- c.RemoteAddr().String()
-			err := delAllRoutesVia(c.RemoteAddr())
-			if err != nil {
-				log.Errorf("Failed to delete all routes via %v", c.RemoteAddr())
-			}
-		}()
-
-		// Send updates to this peer
-		go func() {
+			// Send hello on all new tcp connections
 			e := gob.NewEncoder(c)
-			srcAddr := c.LocalAddr().(*net.TCPAddr).IP
-			for {
-				r := <-s.cb
-				if r == nil { // r is closed on subscriber
-					return
-				}
-				if (r.Dst.IP.To4() == nil) != (srcAddr.To4() == nil) {
-					// Families don't match
-					continue
-				}
-				err := e.Encode(r)
-				if err != nil {
-					log.Error("Failed to encode exportRoute")
-					log.Error(err)
-					close(sendDie)
-					return
-				}
+			err := e.Encode(helloMsg)
+			if err != nil {
+				log.Error("Failed to encode tcp hello on connect")
+				log.Error(err)
+				return
 			}
-		}()
 
-		// Recieve messages from this peer
-		go func() {
+			// get corresponding hello from the other side
 			d := gob.NewDecoder(c)
-			for {
-				er := &exportRoute{}
-				err := d.Decode(er)
-				if err != nil {
-					log.Error("Failed to decode route update")
-					log.Error(err)
-					close(recvDie)
-					return
-				}
-
-				log.Debugf("Recieved update %v from %v", *er, c.RemoteAddr())
-				err = processRoute(er, c.RemoteAddr())
-				if err != nil {
-					log.Errorf("Failed to process route: %v", *er)
-					continue
-				}
+			h := &hello{}
+			err = d.Decode(h)
+			if err != nil {
+				log.Error("Failed to decode tcp hello on connect")
+				log.Error(err)
+				return
 			}
-		}()
+
+			log.Debugf("hello recieved via tcp: %v", h)
+			peerConnected <- h.ListenAddr
+
+			// Handle messages with this peer
+			s := &subscriber{
+				cb:  make(chan *exportRoute),
+				del: make(chan struct{}),
+			}
+			addSubscriber <- s
+
+			// die gracefully
+			sendDie := make(chan struct{})
+			recvDie := make(chan struct{})
+			go func() {
+				select {
+				case _ = <-sendDie:
+					break
+				case _ = <-recvDie:
+					break
+				}
+				close(s.del)
+				disconnectPeer <- c.RemoteAddr().String()
+				err := delAllRoutesVia(c.RemoteAddr())
+				if err != nil {
+					log.Errorf("Failed to delete all routes via %v", c.RemoteAddr())
+				}
+			}()
+
+			// Send updates to this peer
+			go func() {
+				e := gob.NewEncoder(c)
+				srcAddr := c.LocalAddr().(*net.TCPAddr).IP
+				for {
+					r := <-s.cb
+					if r == nil { // r is closed on subscriber
+						return
+					}
+					if (r.Dst.IP.To4() == nil) != (srcAddr.To4() == nil) {
+						// Families don't match
+						continue
+					}
+					err := e.Encode(r)
+					if err != nil {
+						log.Error("Failed to encode exportRoute")
+						log.Error(err)
+						close(sendDie)
+						return
+					}
+				}
+			}()
+
+			// Recieve messages from this peer
+			go func() {
+				d := gob.NewDecoder(c)
+				for {
+					er := &exportRoute{}
+					err := d.Decode(er)
+					if err != nil {
+						log.Error("Failed to decode route update")
+						log.Error(err)
+						close(recvDie)
+						return
+					}
+
+					log.Debugf("Recieved update %v from %v", *er, c.RemoteAddr())
+					err = processRoute(er, c.RemoteAddr())
+					if err != nil {
+						log.Errorf("Failed to process route: %v", *er)
+						continue
+					}
+				}
+			}()
+		}
 	}()
 
 	delSubscriber := make(chan int)

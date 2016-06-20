@@ -71,8 +71,6 @@ func startHello(connectPeer chan<- string, hc chan<- *hello) {
 		if h.ListenAddr == helloMsg.ListenAddr {
 			continue
 		}
-
-		//log.Debugf("%v hello from %v", string(b), src)
 		connectPeer <- h.ListenAddr
 	}
 
