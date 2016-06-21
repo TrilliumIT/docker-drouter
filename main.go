@@ -97,7 +97,7 @@ func Run(ctx *cli.Context) error {
 		TransitNet:    ctx.String("transit-net"),
 	}
 
-	quit := make(chan string)
+	quit := make(chan struct{})
 
 	c := make(chan os.Signal)
 	defer close(c)
