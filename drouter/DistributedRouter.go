@@ -179,37 +179,45 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 	if aggressive {
 		//syncNetworks()
 		go func() {
+			//we want to sync immediatly the first time
+			timer := time.NewTimer(0)
 			for {
-				log.Debug("Syncing networks from docker.")
+				select {
+				case _ = <-shutdown:
+					timer.Stop()
+					return
+				case _ = <-timer.C:
+					log.Debug("Syncing networks from docker.")
 
-				//get all networks from docker
-				dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
-				if err != nil {
-					log.Error("Error getting network list")
-					log.Error(err)
+					//get all networks from docker
+					dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
+					if err != nil {
+						log.Error("Error getting network list")
+						log.Error(err)
+					}
+
+					//learn the docker networks
+					for _, dn := range dockerNets {
+						if dn.ID == transitNetID {
+							continue
+						}
+
+						//do we know about this network already?
+						drn, ok := dr.networks[dn.ID]
+						if !ok {
+							drn = newNetwork(&dn)
+							learnNetwork <- drn
+						}
+
+						if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
+							go drn.connect()
+						}
+					}
+					networkConnectWG.Wait()
+					//use timer instead of ticker to guarantee a 5 second delay from end to start
+					timer = time.NewTimer(5 * time.Second)
 				}
-
-				//learn the docker networks
-				for _, dn := range dockerNets {
-					if dn.ID == transitNetID {
-						continue
-					}
-
-					//do we know about this network already?
-					drn, ok := dr.networks[dn.ID]
-					if !ok {
-						drn = newNetwork(&dn)
-						learnNetwork <- drn
-					}
-
-					if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-						go drn.connect()
-					}
-				}
-				networkConnectWG.Wait()
-				time.Sleep(5 * time.Second)
 			}
-
 		}()
 	}
 
