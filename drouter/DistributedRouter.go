@@ -211,7 +211,11 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 						}
 
 						if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-							go drn.connect()
+							networkConnectWG.Add(1)
+							go func() {
+								defer networkConnectWG.Done()
+								drn.connect()
+							}()
 						}
 					}
 					networkConnectWG.Wait()
@@ -268,9 +272,11 @@ Main:
 
 	//leave all connected networks
 	for _, drn := range dr.networks {
-		if drn.isConnected() {
-			drn.disconnect()
+		if !drn.isConnected() {
+			continue
 		}
+		networkDisconnectWG.Add(len(drn.IPAM.Config))
+		go drn.disconnect()
 	}
 
 	//removing the p2p network cleans up the host routes automatically
@@ -283,10 +289,14 @@ Main:
 
 	disconnectWait := make(chan struct{})
 	go func() {
+		defer close(disconnectWait)
 		networkDisconnectWG.Wait()
-		close(disconnectWait)
 	}()
 
+	go func() {
+		log.Debugf("Wait group: %+v", networkDisconnectWG)
+		time.Sleep(5 * time.Second)
+	}()
 Done:
 	for {
 		select {
@@ -294,6 +304,7 @@ Done:
 			log.Debug("Finished all network disconnects.")
 			break Done
 		case r := <-routeEvent:
+			log.Debugf("Recieved route event: %+v", r)
 			err = dr.processRouteEvent(&r)
 			if err != nil {
 				log.Error(err)
