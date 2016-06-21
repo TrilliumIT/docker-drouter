@@ -13,7 +13,10 @@ import (
 )
 
 type network struct {
-	dockertypes.NetworkResource
+	Name      string
+	ID        string
+	IPAM      dockernetworks.IPAM
+	Options   map[string]string
 	adminDown bool
 }
 
@@ -73,8 +76,11 @@ func (drn *network) disconnect() {
 func newNetwork(n *dockertypes.NetworkResource) *network {
 	//create the network
 	drn := &network{
-		*n,
-		false,
+		Name:      n.Name,
+		ID:        n.ID,
+		IPAM:      n.IPAM,
+		Options:   n.Options,
+		adminDown: false,
 	}
 
 	return drn

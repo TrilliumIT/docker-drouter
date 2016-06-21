@@ -172,7 +172,7 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 		}
 	}
 
-	connectNetwork := make(chan *dockertypes.NetworkResource)
+	connectNetwork := make(chan *network)
 	if aggressive {
 		go func() {
 			for {
@@ -198,7 +198,7 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 					}
 
 					if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-						connectNetwork <- &dn
+						connectNetwork <- drn
 					}
 				}
 				time.Sleep(5 * time.Second)
@@ -227,11 +227,10 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 Main:
 	for {
 		select {
-		case n := <-connectNetwork:
-			drn, ok := dr.networks[n.ID]
+		case drn := <-connectNetwork:
+			_, ok := dr.networks[drn.ID]
 			if !ok {
-				drn = newNetwork(n)
-				dr.networks[n.ID] = drn
+				dr.networks[drn.ID] = drn
 			}
 
 			if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
@@ -320,7 +319,7 @@ func (dr *distributedRouter) setDefaultRoute() error {
 }
 
 // Watch for container events
-func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, connect chan *dockertypes.NetworkResource) error {
+func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, connect chan *network) error {
 	// we currently only care about network events
 	if event.Type != "network" {
 		return nil
@@ -338,7 +337,7 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, conn
 		drn = newNetwork(&nr)
 
 		if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-			connect <- &nr
+			connect <- drn
 			return nil
 		}
 	}
