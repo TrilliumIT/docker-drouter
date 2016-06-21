@@ -46,13 +46,6 @@ func processRoute(ru *exportRoute, s net.Addr) error {
 		return err
 	}
 
-	for _, addr := range addrs {
-		if addr.IP.Equal(ru.Gw) {
-			log.Debugf("Route back to self, disregard")
-			return nil
-		}
-	}
-
 	switch {
 	case ru.Type == syscall.RTM_NEWROUTE:
 		r := &netlink.Route{
