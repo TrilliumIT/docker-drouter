@@ -18,15 +18,17 @@ import (
 
 var (
 	//cli options
-	ipOffset        int
-	aggressive      bool
-	localShortcut   bool
-	localGateway    bool
-	masquerade      bool
-	p2p             p2pNetwork
-	staticRoutes    []*net.IPNet
-	transitNetName  string
-	selfContainerID string
+	ipOffset          int
+	aggressive        bool
+	localShortcut     bool
+	localGateway      bool
+	masquerade        bool
+	p2p               p2pNetwork
+	staticRoutes      []*net.IPNet
+	transitNetName    string
+	selfContainerID   string
+	selfContainerName string
+
 	//other globals
 	hostNamespace *netlink.Handle
 	dockerClient  *dockerclient.Client
@@ -112,6 +114,7 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 		return nil, err
 	}
 	selfContainerID = sc.ID
+	selfContainerName = sc.Name
 
 	//disconnect from all initial networks
 	log.Debug("Leaving all connected currently networks.")
@@ -234,7 +237,7 @@ Main:
 			}
 
 			if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-				drn.connect()
+				go drn.connect()
 			}
 		case e := <-dockerEvent:
 			err = dr.processDockerEvent(e, connectNetwork)
