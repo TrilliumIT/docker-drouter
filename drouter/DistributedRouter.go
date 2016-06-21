@@ -331,6 +331,30 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message) erro
 }
 
 func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
+	if ru.Table == 255 {
+		// We don't want entries from the local routing table
+		// http://linux-ip.net/html/routing-tables.html
+		return nil
+	}
+	if ru.Src.IsLoopback() {
+		return nil
+	}
+	if ru.Dst.IP.IsLoopback() {
+		return nil
+	}
+	if ru.Src.IsLinkLocalUnicast() {
+		return nil
+	}
+	if ru.Dst.IP.IsLinkLocalUnicast() {
+		return nil
+	}
+	if ru.Dst.IP.IsInterfaceLocalMulticast() {
+		return nil
+	}
+	if ru.Dst.IP.IsLinkLocalMulticast() {
+		return nil
+	}
+
 	//skip if route is subnet of static route
 	for _, sr := range staticRoutes {
 		if SubnetContainsSubnet(sr, ru.Dst) {
@@ -345,6 +369,10 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 			Gw:  p2p.selfIP,
 			Dst: ru.Dst,
 			Src: dr.hostUnderlay.IP,
+		}
+		if (route.Dst.IP.To4() == nil) != (route.Gw.To4() == nil) {
+			// Dst is a different IP family
+			return nil
 		}
 		switch ru.Type {
 		case syscall.RTM_NEWROUTE:
