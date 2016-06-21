@@ -19,6 +19,10 @@ func newContainerFromID(id string) (*container, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !cjson.State.Running {
+		return &container{}, nil
+	}
+
 	ch, err := netlinkHandleFromPid(cjson.State.Pid)
 	if err != nil {
 		return nil, err
@@ -95,7 +99,7 @@ func (c *container) addRoute(prefix *net.IPNet) {
 }
 
 func (c *container) delRoutesVia(drn *network) {
-	routes, err := c.handle.RouteList(nil, netlink.FAMILY_V4)
+	routes, err := c.getRoutes()
 	if err != nil {
 		log.Error("Failed to get container route table.")
 		log.Error(err)
@@ -140,7 +144,7 @@ func (c *container) delRoutesVia(drn *network) {
 
 func (c *container) delRoutes(prefix *net.IPNet) {
 	//get all container routes
-	routes, err := c.handle.RouteList(nil, netlink.FAMILY_V4)
+	routes, err := c.getRoutes()
 	if err != nil {
 		log.Error("Failed to get container route table.")
 		log.Error(err)
@@ -182,7 +186,7 @@ func (c *container) replaceGateway(gateway net.IP) error {
 
 	var defr *netlink.Route
 	//replace containers default gateway with drouter
-	routes, err := c.handle.RouteList(nil, netlink.FAMILY_V4)
+	routes, err := c.getRoutes()
 	if err != nil {
 		return err
 	}
@@ -309,4 +313,12 @@ func (c *container) getPathIP() (net.IP, error) {
 	}
 
 	return nil, fmt.Errorf("No direct connection to container.")
+}
+
+func (c *container) getRoutes() ([]netlink.Route, error) {
+	if c.handle != nil {
+		return c.handle.RouteList(nil, netlink.FAMILY_ALL)
+	}
+
+	return make([]netlink.Route, 0), nil
 }
