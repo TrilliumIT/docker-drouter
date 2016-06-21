@@ -229,7 +229,10 @@ func (c *container) replaceGateway(gateway net.IP) error {
 func (c *container) networkConnectEvent(drn *network) error {
 	if !drn.isConnected() {
 		drn.connect()
+		//return now because the routeEvent will trigger routes to be installed in this container
+		return nil
 	}
+
 	//let's push our routes into this new container
 	gateway, err := c.getPathIP()
 	if err != nil {
