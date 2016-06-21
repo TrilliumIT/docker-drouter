@@ -308,6 +308,9 @@ func (dr *distributedRouter) setDefaultRoute() error {
 	}
 
 	for _, r := range revRoutes {
+		if r.GW != nil {
+			continue
+		}
 		err = netlink.RouteAdd(&netlink.Route{
 			LinkIndex: r.LinkIndex,
 			Gw:        dr.defaultRoute,
