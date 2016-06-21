@@ -11,13 +11,20 @@ import (
 )
 
 type container struct {
-	id     string
 	handle *netlink.Handle
 }
 
 func newContainerFromID(id string) (*container, error) {
-	return &container{id: id}, nil
+	cjson, err := dockerClient.ContainerInspect(context.Background(), id)
+	if err != nil {
+		return nil, err
+	}
+	ch, err := netlinkHandleFromPid(cjson.State.Pid)
+	if err != nil {
+		return nil, err
+	}
 
+	return &container{handle: ch}, nil
 }
 
 //adds all known routes for provided container
@@ -78,7 +85,7 @@ func (c *container) addRoute(prefix *net.IPNet) {
 	}
 
 	log.Infof("Adding route to %v via %v.", prefix, gateway)
-	err = c.getHandle().RouteAdd(route)
+	err = c.handle.RouteAdd(route)
 	if err != nil {
 		if !strings.Contains(err.Error(), "file exists") {
 			log.Error(err)
@@ -133,7 +140,7 @@ func (c *container) delRoutesVia(drn *network) {
 
 func (c *container) delRoutes(prefix *net.IPNet) {
 	//get all container routes
-	routes, err := c.getHandle().RouteList(nil, netlink.FAMILY_V4)
+	routes, err := c.handle.RouteList(nil, netlink.FAMILY_V4)
 	if err != nil {
 		log.Error("Failed to get container route table.")
 		log.Error(err)
@@ -175,7 +182,7 @@ func (c *container) replaceGateway(gateway net.IP) error {
 
 	var defr *netlink.Route
 	//replace containers default gateway with drouter
-	routes, err := c.getHandle().RouteList(nil, netlink.FAMILY_V4)
+	routes, err := c.handle.RouteList(nil, netlink.FAMILY_V4)
 	if err != nil {
 		return err
 	}
@@ -195,7 +202,7 @@ func (c *container) replaceGateway(gateway net.IP) error {
 	}
 
 	log.Debugf("Remove existing default route: %v", defr)
-	err = c.getHandle().RouteDel(defr)
+	err = c.handle.RouteDel(defr)
 	if err != nil {
 		return err
 	}
@@ -205,7 +212,7 @@ func (c *container) replaceGateway(gateway net.IP) error {
 	}
 
 	defr.Gw = gateway
-	err = c.getHandle().RouteAdd(defr)
+	err = c.handle.RouteAdd(defr)
 	if err != nil {
 		return err
 	}
@@ -277,7 +284,7 @@ func (c *container) networkDisconnectEvent(drn *network) error {
 
 //returns a drouter IP that is on some same network as provided container
 func (c *container) getPathIP() (net.IP, error) {
-	addrs, err := c.getHandle().AddrList(nil, netlink.FAMILY_V4)
+	addrs, err := c.handle.AddrList(nil, netlink.FAMILY_V4)
 	if err != nil {
 		log.Error("Failed to list container addresses.")
 		return nil, err
@@ -302,31 +309,4 @@ func (c *container) getPathIP() (net.IP, error) {
 	}
 
 	return nil, fmt.Errorf("No direct connection to container.")
-}
-
-func (c *container) getHandle() *netlink.Handle {
-	if c.handle != nil {
-		return c.handle
-	}
-
-	cjson, err := dockerClient.ContainerInspect(context.Background(), c.id)
-	if err != nil {
-		log.Error("Error getting container JSON.")
-		log.Error(err)
-		return nil
-	}
-
-	if cjson.State.Pid == 0 {
-		log.Error("Could not get container namespace handle because the container is not running.")
-		return nil
-	}
-
-	ch, err := netlinkHandleFromPid(cjson.State.Pid)
-	if err != nil {
-		log.Error("Error getting container namespace handle.")
-		log.Error(err)
-		return nil
-	}
-
-	return ch
 }
