@@ -268,7 +268,9 @@ Main:
 
 	//leave all connected networks
 	for _, drn := range dr.networks {
-		drn.disconnect()
+		if drn.isConnected() {
+			drn.disconnect()
+		}
 	}
 
 	//removing the p2p network cleans up the host routes automatically
@@ -279,7 +281,25 @@ Main:
 		}
 	}
 
-	networkDisconnectWG.Wait()
+	disconnectWait := make(chan struct{})
+	go func() {
+		networkDisconnectWG.Wait()
+		close(disconnectWait)
+	}()
+
+Done:
+	for {
+		select {
+		case _ = <-disconnectWait:
+			log.Debug("Finished all network disconnects.")
+			break Done
+		case r := <-routeEvent:
+			err = dr.processRouteEvent(&r)
+			if err != nil {
+				log.Error(err)
+			}
+		}
+	}
 	return nil
 }
 
