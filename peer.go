@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/gob"
 	log "github.com/Sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 	"net"
 	"strconv"
 )
@@ -25,6 +26,23 @@ func startTCPListener(peerCh chan<- *net.Conn) {
 		if err != nil {
 			log.Error("Failed to accept listener")
 			log.Error(err)
+			continue
+		}
+		src := c.RemoteAddr().(*net.TCPAddr).IP
+		routes, err := netlink.RouteGet(src)
+		if err != nil {
+			log.Errorf("Failed to get route to src %v", src)
+			continue
+		}
+		direct := false
+		for _, route := range routes {
+			if route.Gw == nil {
+				direct = true
+				continue
+			}
+		}
+		if !direct {
+			log.Errorf("Rejecting connection to not directly connected peer")
 			continue
 		}
 		peerCh <- &c
