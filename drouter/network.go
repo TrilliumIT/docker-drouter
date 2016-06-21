@@ -1,7 +1,6 @@
 package drouter
 
 import (
-	"fmt"
 	log "github.com/Sirupsen/logrus"
 	dockertypes "github.com/docker/engine-api/types"
 	dockernetworks "github.com/docker/engine-api/types/network"
@@ -24,6 +23,8 @@ type network struct {
 
 //connects to a drNetwork
 func (drn *network) connect() {
+	networkConnectWG.Add(1)
+	defer networkConnectWG.Done()
 	log.Debugf("Connecting to network: %v", drn.Name)
 
 	endpointSettings := &dockernetworks.EndpointSettings{}
@@ -57,13 +58,14 @@ func (drn *network) connect() {
 	//connect to network
 	err := dockerClient.NetworkConnect(context.Background(), drn.ID, selfContainerID, endpointSettings)
 	if err != nil {
-		if strings.Contains(err.Error(), fmt.Sprintf("service endpoint with name %v already exists", selfContainerName)) {
-			log.Warningf("Attempted to connect to network that we were already connected to: %v", drn.Name)
-			return
-		} else {
-			log.Error(err)
+		if strings.Contains(err.Error(), "already exists") {
+			log.Warningf("Attempted to connect to network that drouter is already connected to: %v", drn.Name)
 			return
 		}
+
+		log.Errorf("Error connecting to network: %v", drn.Name)
+		log.Error(err)
+		return
 	}
 	log.Debugf("Connected to network: %v", drn.Name)
 }
