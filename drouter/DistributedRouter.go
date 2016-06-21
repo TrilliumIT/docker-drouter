@@ -175,7 +175,7 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 		}
 	}
 
-	connectNetwork := make(chan *network)
+	learnNetwork := make(chan *network)
 	if aggressive {
 		go func() {
 			for {
@@ -198,10 +198,11 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 					drn, ok := dr.networks[dn.ID]
 					if !ok {
 						drn = newNetwork(&dn)
+						learnNetwork <- drn
 					}
 
 					if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-						connectNetwork <- drn
+						go drn.connect()
 					}
 				}
 				networkConnectWG.Wait()
@@ -231,17 +232,13 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 Main:
 	for {
 		select {
-		case drn := <-connectNetwork:
+		case drn := <-learnNetwork:
 			_, ok := dr.networks[drn.ID]
 			if !ok {
 				dr.networks[drn.ID] = drn
 			}
-
-			if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-				go drn.connect()
-			}
 		case e := <-dockerEvent:
-			err = dr.processDockerEvent(e, connectNetwork)
+			err = dr.processDockerEvent(e, learnNetwork)
 			if err != nil {
 				log.Error(err)
 			}
@@ -364,7 +361,7 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, conn
 
 	switch event.Action {
 	case "connect":
-		return c.networkConnectEvent()
+		return c.networkConnectEvent(drn)
 	case "disconnect":
 		return c.networkDisconnectEvent(drn)
 	default:

@@ -177,7 +177,10 @@ func (c *container) replaceGateway(gateway net.IP) error {
 }
 
 // called during a network connect event
-func (c *container) networkConnectEvent() error {
+func (c *container) networkConnectEvent(drn *network) error {
+	if !drn.isConnected() {
+		drn.connect()
+	}
 	//let's push our routes into this new container
 	gateway, err := c.getPathIP()
 	if err != nil {
