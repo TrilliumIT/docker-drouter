@@ -285,7 +285,8 @@ func (c *container) disconnectEvent(drn *network) error {
 		}
 	}
 
-	drn.disconnect()
+	networkDisconnectWG.Add(len(drn.IPAM.Config))
+	go drn.disconnect()
 
 	return nil
 }

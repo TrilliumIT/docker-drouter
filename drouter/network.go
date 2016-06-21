@@ -23,8 +23,6 @@ type network struct {
 
 //connects to a drNetwork
 func (drn *network) connect() {
-	networkConnectWG.Add(1)
-	defer networkConnectWG.Done()
 	log.Debugf("Connecting to network: %v", drn.Name)
 
 	endpointSettings := &dockernetworks.EndpointSettings{}
@@ -72,7 +70,6 @@ func (drn *network) connect() {
 
 //disconnects from this drNetwork
 func (drn *network) disconnect() {
-	networkDisconnectWG.Add(len(drn.IPAM.Config))
 	log.Debugf("Disconnecting from network: %v", drn.Name)
 
 	err := dockerClient.NetworkDisconnect(context.Background(), drn.ID, selfContainerID, true)
