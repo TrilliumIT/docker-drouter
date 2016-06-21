@@ -39,7 +39,7 @@ type exportRoute struct {
 func processRoute(ru *exportRoute, s net.Addr) error {
 	src := s.(*net.TCPAddr).IP
 
-	addrs, err := netlink.AddrList(nil, netlink.FAMILY_ALL)
+	_, err := netlink.AddrList(nil, netlink.FAMILY_ALL)
 	if err != nil {
 		log.Error("Failed to get addresses")
 		log.Error(err)

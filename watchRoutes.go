@@ -21,9 +21,9 @@ func watchRoutes(localRouteUpdate chan<- *exportRoute) {
 			// we only care about directly connected routes
 			continue
 		}
-		ones, bits := ru.Dst.Mask.Size()
-		if ones == bits {
-			// this is a /32
+		if ru.Table == 255 {
+			// We don't want entries from the local routing table
+			// http://linux-ip.net/html/routing-tables.html
 			continue
 		}
 		if ru.Src.IsLoopback() {
