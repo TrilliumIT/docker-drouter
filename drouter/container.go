@@ -245,13 +245,15 @@ func (c *container) getPathIP() (net.IP, error) {
 		}
 
 		log.Debugf("Getting my route to container IP: %v", addr.IP)
-		src, err := netlink.RouteGet(addr.IP)
+		srcRoutes, err := netlink.RouteGet(addr.IP)
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		if src[0].Gw == nil {
-			return src[0].Src, nil
+		for _, srcRoute := range srcRoutes {
+			if srcRoute.Gw == nil {
+				return srcRoute.Src, nil
+			}
 		}
 	}
 

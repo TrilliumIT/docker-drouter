@@ -298,18 +298,20 @@ func (dr *distributedRouter) setDefaultRoute() error {
 	}
 
 	//add intended default route, if it's not set and necessary
-	if !defaultSet && !dr.defaultRoute.Equal(net.IP{}) {
-		r, err := netlink.RouteGet(dr.defaultRoute)
-		if err != nil {
-			return err
-		}
+	if defaultSet || dr.defaultRoute.Equal(net.IP{}) {
+		return nil
+	}
 
-		nr := &netlink.Route{
-			LinkIndex: r[0].LinkIndex,
+	routes, err := netlink.RouteGet(dr.defaultRoute)
+	if err != nil {
+		return err
+	}
+
+	for _, r := range routes {
+		err = netlink.RouteAdd(&netlink.Route{
+			LinkIndex: r.LinkIndex,
 			Gw:        dr.defaultRoute,
-		}
-
-		err = netlink.RouteAdd(nr)
+		})
 		if err != nil {
 			return err
 		}
