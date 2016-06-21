@@ -95,6 +95,24 @@ func (c *container) addRoute(prefix *net.IPNet) {
 			log.Error(err)
 			return
 		}
+		routes, err2 := c.handle.RouteGet(prefix.IP)
+		if err2 != nil {
+			log.Errorf("Failed to get container routes to: %v.", prefix.IP)
+			log.Error(err)
+			return
+		}
+		for _, r := range routes {
+			if r.Gw.Equal(gateway) {
+				return
+			}
+			err := c.handle.RouteDel(&netlink.Route{Dst: prefix, Gw: r.Gw})
+			if err != nil {
+				log.Errorf("Failed to delete route to %v via %v.", prefix, r.Gw)
+				log.Error(err)
+				return
+			}
+		}
+		c.addRoute(prefix)
 	}
 }
 
