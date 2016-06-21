@@ -302,12 +302,12 @@ func (dr *distributedRouter) setDefaultRoute() error {
 		return nil
 	}
 
-	routes, err := netlink.RouteGet(dr.defaultRoute)
+	revRoutes, err := netlink.RouteGet(dr.defaultRoute)
 	if err != nil {
 		return err
 	}
 
-	for _, r := range routes {
+	for _, r := range revRoutes {
 		err = netlink.RouteAdd(&netlink.Route{
 			LinkIndex: r.LinkIndex,
 			Gw:        dr.defaultRoute,
