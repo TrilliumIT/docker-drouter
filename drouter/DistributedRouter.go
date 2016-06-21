@@ -177,6 +177,7 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 
 	learnNetwork := make(chan *network)
 	if aggressive {
+		//syncNetworks()
 		go func() {
 			for {
 				log.Debug("Syncing networks from docker.")
@@ -318,7 +319,7 @@ func (dr *distributedRouter) setDefaultRoute() error {
 }
 
 // Watch for container events
-func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, connect chan *network) error {
+func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, learn chan *network) error {
 	// we currently only care about network events
 	if event.Type != "network" {
 		return nil
@@ -335,10 +336,10 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, conn
 		}
 		drn = newNetwork(&nr)
 
-		connect <- drn
+		learn <- drn
 	}
 
-	//we dont' manage this network, or it's not connected
+	//we dont' manage this network
 	if !drn.isDRouter() {
 		return nil
 	}
