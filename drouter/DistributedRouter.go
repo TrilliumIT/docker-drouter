@@ -276,12 +276,15 @@ Main:
 
 //sets the default route to distributedRouter.defaultRoute
 func (dr *distributedRouter) setDefaultRoute() error {
+	if dr.defaultRoute.Equal(net.IP{}) {
+		return nil
+	}
+
 	//remove all incorrect default routes
 	routes, err := netlink.RouteList(nil, netlink.FAMILY_V4)
 	if err != nil {
 		return err
 	}
-	defaultSet := false
 	for _, r := range routes {
 		if r.Dst != nil {
 			continue
@@ -289,40 +292,30 @@ func (dr *distributedRouter) setDefaultRoute() error {
 
 		//test that inteded default is already present, don't remove if so
 		if r.Gw.Equal(dr.defaultRoute) {
-			defaultSet = true
-			continue
-		} else {
-			log.Debugf("Remove default route thru: %v", r.Gw)
-			err = netlink.RouteDel(&r)
-			if err != nil {
-				return err
-			}
+			return nil
 		}
-	}
 
-	//add intended default route, if it's not set and necessary
-	if defaultSet || dr.defaultRoute.Equal(net.IP{}) {
-		return nil
-	}
-
-	revRoutes, err := netlink.RouteGet(dr.defaultRoute)
-	if err != nil {
-		return err
-	}
-
-	for _, r := range revRoutes {
-		if r.GW != nil {
-			continue
-		}
-		err = netlink.RouteAdd(&netlink.Route{
-			LinkIndex: r.LinkIndex,
-			Gw:        dr.defaultRoute,
-		})
+		log.Debugf("Remove default route thru: %v", r.Gw)
+		err = netlink.RouteDel(&r)
 		if err != nil {
 			return err
 		}
 	}
 
+	gwPaths, err := netlink.RouteGet(dr.defaultRoute)
+	if err != nil {
+		return err
+	}
+
+	for _, r := range gwPaths {
+		if r.GW != nil {
+			continue
+		}
+		return netlink.RouteAdd(&netlink.Route{
+			LinkIndex: r.LinkIndex,
+			Gw:        dr.defaultRoute,
+		})
+	}
 	return nil
 }
 
