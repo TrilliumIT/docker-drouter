@@ -12,28 +12,29 @@ import (
 	"golang.org/x/net/context"
 	"net"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 )
 
 var (
 	//cli options
-	ipOffset          int
-	aggressive        bool
-	localShortcut     bool
-	localGateway      bool
-	masquerade        bool
-	p2p               p2pNetwork
-	staticRoutes      []*net.IPNet
-	transitNetName    string
-	selfContainerID   string
-	selfContainerName string
+	ipOffset        int
+	aggressive      bool
+	localShortcut   bool
+	localGateway    bool
+	masquerade      bool
+	p2p             p2pNetwork
+	staticRoutes    []*net.IPNet
+	transitNetName  string
+	selfContainerID string
 
 	//other globals
-	hostNamespace *netlink.Handle
-	dockerClient  *dockerclient.Client
-	transitNetID  string
-	hostUnderlay  *net.IPNet
+	hostNamespace    *netlink.Handle
+	dockerClient     *dockerclient.Client
+	transitNetID     string
+	hostUnderlay     *net.IPNet
+	networkConnectWG sync.WaitGroup
 )
 
 //DistributedRouterOptions Options for our DistributedRouter instance
@@ -114,7 +115,6 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 		return nil, err
 	}
 	selfContainerID = sc.ID
-	selfContainerName = sc.Name
 
 	//disconnect from all initial networks
 	log.Debug("Leaving all connected currently networks.")
@@ -204,6 +204,7 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 						connectNetwork <- drn
 					}
 				}
+				networkConnectWG.Wait()
 				time.Sleep(5 * time.Second)
 			}
 
