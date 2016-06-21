@@ -1,6 +1,7 @@
 package drouter
 
 import (
+	"fmt"
 	log "github.com/Sirupsen/logrus"
 	dockertypes "github.com/docker/engine-api/types"
 	dockernetworks "github.com/docker/engine-api/types/network"
@@ -10,6 +11,7 @@ import (
 	"golang.org/x/net/context"
 	"net"
 	"strconv"
+	"strings"
 )
 
 type network struct {
@@ -55,8 +57,13 @@ func (drn *network) connect() {
 	//connect to network
 	err := dockerClient.NetworkConnect(context.Background(), drn.ID, selfContainerID, endpointSettings)
 	if err != nil {
-		log.Error(err)
-		return
+		if strings.Contains(err.Error(), fmt.Sprintf("service endpoint with name %v already exists", selfContainerName)) {
+			log.Warningf("Attempted to connect to network that we were already connected to: %v", drn.Name)
+			return
+		} else {
+			log.Error(err)
+			return
+		}
 	}
 	log.Debugf("Connected to network: %v", drn.Name)
 }
