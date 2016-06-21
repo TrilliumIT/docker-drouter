@@ -72,6 +72,7 @@ func (drn *network) connect() {
 
 //disconnects from this drNetwork
 func (drn *network) disconnect() {
+	networkDisconnectWG.Add(len(drn.IPAM.Config))
 	log.Debugf("Disconnecting from network: %v", drn.Name)
 
 	err := dockerClient.NetworkDisconnect(context.Background(), drn.ID, selfContainerID, true)

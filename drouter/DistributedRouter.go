@@ -30,11 +30,12 @@ var (
 	selfContainerID string
 
 	//other globals
-	hostNamespace    *netlink.Handle
-	dockerClient     *dockerclient.Client
-	transitNetID     string
-	hostUnderlay     *net.IPNet
-	networkConnectWG sync.WaitGroup
+	hostNamespace       *netlink.Handle
+	dockerClient        *dockerclient.Client
+	transitNetID        string
+	hostUnderlay        *net.IPNet
+	networkConnectWG    sync.WaitGroup
+	networkDisconnectWG sync.WaitGroup
 )
 
 //DistributedRouterOptions Options for our DistributedRouter instance
@@ -278,6 +279,7 @@ Main:
 		}
 	}
 
+	networkDisconnectWG.Wait()
 	return nil
 }
 
@@ -370,9 +372,9 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, lear
 
 	switch event.Action {
 	case "connect":
-		return c.networkConnectEvent(drn)
+		return c.connectEvent(drn)
 	case "disconnect":
-		return c.networkDisconnectEvent(drn)
+		return c.disconnectEvent(drn)
 	default:
 		//we don't handle whatever action this is (yet?)
 		return nil
@@ -408,17 +410,19 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 		return nil
 	}
 
-	//skip if route is subnet of static route
+	if ru.Type == syscall.RTM_DELROUTE {
+		defer networkDisconnectWG.Done()
+	}
+
+	coveredByStatic := false
 	for _, sr := range staticRoutes {
 		if subnetContainsSubnet(sr, ru.Dst) {
-			//static routes include P2P network
-			log.Debugf("Skipping route %v covered by %v.", ru.Dst, sr)
-			return nil
+			coveredByStatic = true
 		}
 	}
 
 	//do host routes
-	if localShortcut {
+	if localShortcut && !coveredByStatic {
 		route := &netlink.Route{
 			Gw:  p2p.selfIP,
 			Dst: ru.Dst,
@@ -502,13 +506,24 @@ Containers:
 					go c.addAllRoutes()
 					break Containers
 				case syscall.RTM_DELROUTE:
-					_, supernet, _ := net.ParseCIDR("0.0.0.0/0")
-					go c.delRoutes(supernet)
+					networkDisconnectWG.Add(1)
+					defer networkDisconnectWG.Done()
+					go func() {
+						c.delRoutesVia(ru.Dst)
+
+						if pIP, _ := c.getPathIP(); pIP != nil {
+							c.addAllRoutes()
+						}
+					}()
 					break Containers
 				default:
 					return fmt.Errorf("Unknown RouteUpdate.Type.")
 				}
 			}
+		}
+
+		if !coveredByStatic {
+			continue
 		}
 
 		switch ru.Type {
