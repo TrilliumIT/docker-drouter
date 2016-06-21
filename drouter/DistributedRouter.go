@@ -464,6 +464,8 @@ Containers:
 			continue
 		}
 		//skip containers we don't have a direct route/connection to
+		//Can't call network.isconnected because bug in containerlist doesn't
+		//return networkID
 		connected := false
 	Endpoints:
 		for _, es := range dc.NetworkSettings.Networks {
