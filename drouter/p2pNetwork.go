@@ -33,7 +33,7 @@ func makeP2PLink(p2paddr string) error {
 	if err != nil {
 		return err
 	}
-	err = hostNamespace.LinkSetNsPid(int_link, os.GetPid())
+	err = hostNamespace.LinkSetNsPid(int_link, os.Getpid())
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,6 @@ func makeP2PLink(p2paddr string) error {
 	}
 
 	//discover host underlay address/network
-	hunderlay := &net.IPNet{}
 	hroutes, err := hostNamespace.RouteList(nil, netlink.FAMILY_V4)
 	if err != nil {
 		return err
@@ -106,20 +105,19 @@ Hroutes:
 			if !addr.IP.Equal(r.Src) {
 				continue
 			}
-			hunderlay.IP = addr.IP
-			hunderlay.Mask = addr.Mask
+			hostUnderlay.IP = addr.IP
+			hostUnderlay.Mask = addr.Mask
 			break Hroutes
 		}
 	}
 
-	log.Debugf("Discovered host underlay as: %v", hunderlay)
+	log.Debugf("Discovered host underlay as: %v", hostUnderlay)
 
-	staticRoutes = append(staticRoutes, NetworkID(hunderlay))
-	hostUnderlay = hunderlay
+	staticRoutes = append(staticRoutes, networkID(hostUnderlay))
 
 	hroute := &netlink.Route{
 		LinkIndex: int_link.Attrs().Index,
-		Dst:       NetworkID(hunderlay),
+		Dst:       networkID(hostUnderlay),
 		Gw:        host_addr.IP,
 	}
 
@@ -142,7 +140,7 @@ Hroutes:
 			LinkIndex: host_link.Attrs().Index,
 			Dst:       sr,
 			Gw:        int_addr.IP,
-			Src:       hunderlay.IP,
+			Src:       hostUnderlay.IP,
 		}
 
 		log.Infof("Adding host route to %v via %v.", sroute.Dst, sroute.Gw)

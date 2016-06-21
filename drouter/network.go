@@ -70,9 +70,8 @@ func (drn *network) disconnect() {
 	log.Debugf("Disconnected from network: %v", drn.Name)
 }
 
-func newNetwork(n *dockertypes.NetworkResource) (*network, error) {
+func newNetwork(n *dockertypes.NetworkResource) *network {
 	log.Debugf("Learning a new network: %v", n.Name)
-	var err error
 
 	//create the network
 	drn := &network{
@@ -80,7 +79,7 @@ func newNetwork(n *dockertypes.NetworkResource) (*network, error) {
 		false,
 	}
 
-	return drn, nil
+	return drn
 }
 
 func (n *network) isConnected() bool {
@@ -96,13 +95,13 @@ func (n *network) isConnected() bool {
 			if r.Gw != nil {
 				continue
 			}
-			ip, subnet, err := net.ParseCIDR(ic.Subnet)
+			_, subnet, err := net.ParseCIDR(ic.Subnet)
 			if err != nil {
 				log.Error("Failed to parse ipam subnet.")
 				log.Error(err)
 				return false
 			}
-			if SubnetEqualSubnet(r.Dst, subnet) {
+			if subnetEqualSubnet(r.Dst, subnet) {
 				//if we are connected to /any/ subnet, then we must be connected to the vxlan already
 				//if we are missing only one subnet, we can't re-connect anyway
 				//so don't continue here
@@ -117,12 +116,13 @@ func (n *network) isDRouter() bool {
 	if n.ID == transitNetID {
 		return true
 	}
+	var err error
+	drouter := false
 
 	//parse docker network drouter option
-	drouter := false
 	drouter_str := n.Options["drouter"]
 	if drouter_str != "" {
-		drouter, err := strconv.ParseBool(drouter_str)
+		drouter, err = strconv.ParseBool(drouter_str)
 		if err != nil {
 			log.Errorf("Error parsing drouter option %v, for network: %v", drouter_str, n.ID)
 			log.Error(err)

@@ -29,10 +29,12 @@ var (
 	transitNetID    string
 	p2p             p2pNetwork
 	staticRoutes    []*net.IPNet
+	hostUnderlay    *net.IPNet
 )
 
+//DistributedRouterOptions Options for our DistributedRouter instance
 type DistributedRouterOptions struct {
-	IpOffset      int
+	IPOffset      int
 	Aggressive    bool
 	LocalShortcut bool
 	LocalGateway  bool
@@ -45,14 +47,13 @@ type DistributedRouterOptions struct {
 type distributedRouter struct {
 	networks     map[string]*network
 	defaultRoute net.IP
-	hostUnderlay *net.IPNet
 }
 
 func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter, error) {
 	var err error
 
 	if !options.Aggressive && len(options.TransitNet) == 0 {
-		return &distributedRouter{}, fmt.Errorf("--no-aggressive, and --transit-net was not found.")
+		return &distributedRouter{}, fmt.Errorf("Detected --no-aggressive, and --transit-net was not found.")
 	}
 
 	//get the pid of drouter
@@ -63,27 +64,27 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 
 	//get docker client
 	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
-	docker, err := dockerclient.NewClient("unix:///var/run/docker.sock", "v1.23", nil, defaultHeaders)
+	dockerClient, err = dockerclient.NewClient("unix:///var/run/docker.sock", "v1.23", nil, defaultHeaders)
 	if err != nil {
 		log.Error("Error connecting to docker socket")
 		return &distributedRouter{}, err
 	}
 
 	//process options for assumptions and validity
-	lsc := options.LocalShortcut
-	lgw := options.LocalGateway
+	localShortcut := options.LocalShortcut
+	localGateway := options.LocalGateway
 	if options.Masquerade {
 		log.Debug("Detected --masquerade. Assuming --local-gateway and --local-shortcut.")
-		lsc = true
-		lgw = true
+		localShortcut = true
+		localGateway = true
 	} else {
-		if lgw {
+		if localGateway {
 			log.Debug("Detected --local-gateway. Assuming --local-shortcut.")
-			lsc = true
+			localShortcut = true
 		}
 	}
 
-	sroutes := make([]*net.IPNet, 0)
+	var sroutes []*net.IPNet
 	for _, sr := range options.StaticRoutes {
 		_, cidr, err := net.ParseCIDR(sr)
 		if err != nil {
@@ -98,11 +99,13 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 		log.Error("Failed to getSelfContainer(). I am running in a container, right?.")
 		return nil, err
 	}
+	selfContainerID = sc.ID
 
 	//disconnect from all initial networks
 	log.Debug("Leaving all connected currently networks.")
-	for _, settings := range sc.NetworkSettings.Networks {
-		err = docker.NetworkDisconnect(context.Background(), settings.NetworkID, sc.ID, true)
+	for name, settings := range sc.NetworkSettings.Networks {
+		log.Debugf("Leaving network: %v", name)
+		err = dockerClient.NetworkDisconnect(context.Background(), settings.NetworkID, selfContainerID, true)
 		if err != nil {
 			log.Error(err)
 			continue
@@ -141,6 +144,7 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	return dr, nil
 }
 
+//Run creates and runs a drouter instance
 func Run(opts *DistributedRouterOptions, shutdown <-chan string) error {
 	dr, err := newDistributedRouter(opts)
 	if err != nil {
@@ -200,7 +204,7 @@ Main:
 				log.Error(err)
 			}
 		case e := <-dockerEventErr:
-			log.Error(err)
+			log.Error(e)
 		case _ = <-shutdown:
 			break Main
 		}
@@ -209,7 +213,7 @@ Main:
 	log.Info("Cleaning Up")
 
 	//leave all connected networks
-	for id, drn := range dr.networks {
+	for _, drn := range dr.networks {
 		drn.disconnect()
 	}
 
@@ -289,11 +293,7 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message) erro
 			return err
 		}
 		//learn network
-		dr.networks[event.Actor.ID], err = newNetwork(&nr)
-		if err != nil {
-			log.Error("Failed create drNetwork after a container connected to it.")
-			return err
-		}
+		dr.networks[event.Actor.ID] = newNetwork(&nr)
 	}
 
 	if event.Actor.Attributes["container"] == selfContainerID {
@@ -357,7 +357,7 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 
 	//skip if route is subnet of static route
 	for _, sr := range staticRoutes {
-		if SubnetContainsSubnet(sr, ru.Dst) {
+		if subnetContainsSubnet(sr, ru.Dst) {
 			log.Debugf("Skipping route %v covered by %v.", ru.Dst, sr)
 			return nil
 		}
@@ -368,7 +368,7 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 		route := &netlink.Route{
 			Gw:  p2p.selfIP,
 			Dst: ru.Dst,
-			Src: dr.hostUnderlay.IP,
+			Src: hostUnderlay.IP,
 		}
 		if (route.Dst.IP.To4() == nil) != (route.Gw.To4() == nil) {
 			// Dst is a different IP family
@@ -390,13 +390,21 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 		}
 	}
 
-	//do container routes
+	//get drouter routing table
+	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
+	if err != nil {
+		log.Error("Failed to get drouter routing table.")
+		return err
+	}
+
+	//get local containers
 	dockerContainers, err := dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
 	if err != nil {
 		log.Error("Failed to get container list.")
 		return err
 	}
 
+	//do container routes
 Containers:
 	for _, dc := range dockerContainers {
 		if dc.HostConfig.NetworkMode == "host" {
@@ -405,13 +413,23 @@ Containers:
 		if dc.ID == selfContainerID {
 			continue
 		}
+		//skip containers we don't have a direct route/connection to
+		connected := false
+	Endpoints:
 		for _, es := range dc.NetworkSettings.Networks {
-			routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
+			ip := net.ParseIP(es.IPAddress)
 			for _, r := range routes {
 				if r.Gw != nil {
 					continue
 				}
+				if r.Dst.Contains(ip) {
+					connected = true
+					break Endpoints
+				}
 			}
+		}
+		if !connected {
+			continue
 		}
 
 		c, err := newContainerFromID(dc.ID)
@@ -466,15 +484,11 @@ func (dr *distributedRouter) selfNetworkDisconnectEvent(networkID string) error 
 func (dr *distributedRouter) initTransitNet() error {
 	nr, err := dockerClient.NetworkInspect(context.Background(), transitNetName)
 	if err != nil {
-		log.Error("Failed to inspect network for transit net: %v", transitNetName)
+		log.Errorf("Failed to inspect network for transit net: %v", transitNetName)
 		return err
 	}
 
-	dr.networks[nr.ID], err = newNetwork(&nr)
-	if err != nil {
-		log.Error("Failed to learn the transit net: %v.", nr.Name)
-		return err
-	}
+	dr.networks[nr.ID] = newNetwork(&nr)
 
 	transitNetID = nr.ID
 
@@ -485,7 +499,7 @@ func (dr *distributedRouter) initTransitNet() error {
 	}
 	dr.networks[nr.ID].connect()
 	if err != nil {
-		log.Error("Failed to connect to transit net: %v", nr.Name)
+		log.Errorf("Failed to connect to transit net: %v", nr.Name)
 		return err
 	}
 
@@ -509,16 +523,12 @@ func (dr *distributedRouter) syncNetworks() error {
 			continue
 		}
 
-		var err error
 		//do we know about this network already?
 		_, ok := dr.networks[dn.ID]
 
 		if !ok {
 			//no, create it
-			dr.networks[dn.ID], err = newNetwork(&dn)
-			if err != nil {
-				return err
-			}
+			dr.networks[dn.ID] = newNetwork(&dn)
 		}
 		drn := dr.networks[dn.ID]
 

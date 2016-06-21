@@ -50,11 +50,11 @@ Subnets:
 		if r.Gw != nil {
 			continue
 		}
-		if SubnetEqualSubnet(r.Dst, NetworkID(p2p.network)) {
+		if subnetEqualSubnet(r.Dst, networkID(p2p.network)) {
 			continue
 		}
 		for _, sr := range staticRoutes {
-			if SubnetContainsSubnet(sr, r.Dst) {
+			if subnetContainsSubnet(sr, r.Dst) {
 				log.Debugf("Skipping route %v covered by %v.", r.Dst, sr)
 				break Subnets
 			}
@@ -108,7 +108,7 @@ func (c *container) delRoutes(prefix *net.IPNet) {
 		if r.Dst == nil {
 			continue
 		}
-		if !SubnetContainsSubnet(prefix, r.Dst) {
+		if !subnetContainsSubnet(prefix, r.Dst) {
 			continue
 		}
 
