@@ -50,8 +50,10 @@ Subnets:
 		if r.Gw != nil {
 			continue
 		}
-		if subnetEqualSubnet(r.Dst, networkID(p2p.network)) {
-			continue
+		if localShortcut {
+			if subnetEqualSubnet(r.Dst, networkID(p2p.network)) {
+				continue
+			}
 		}
 		for _, sr := range staticRoutes {
 			if subnetContainsSubnet(sr, r.Dst) {
