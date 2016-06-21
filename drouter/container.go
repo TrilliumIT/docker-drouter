@@ -65,6 +65,7 @@ Subnets:
 				break Subnets
 			}
 		}
+		//TODO: filter routes that container is already connected to
 		go c.addRoute(r.Dst)
 	}
 
