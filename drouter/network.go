@@ -71,8 +71,6 @@ func (drn *network) disconnect() {
 }
 
 func newNetwork(n *dockertypes.NetworkResource) *network {
-	log.Debugf("Learning a new network: %v", n.Name)
-
 	//create the network
 	drn := &network{
 		*n,

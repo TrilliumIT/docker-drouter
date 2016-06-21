@@ -229,6 +229,7 @@ Main:
 			drn, ok := dr.networks[n.ID]
 			if !ok {
 				drn = newNetwork(n)
+				dr.networks[n.ID] = drn
 			}
 
 			if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
@@ -381,20 +382,22 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 	if ru.Src.IsLoopback() {
 		return nil
 	}
-	if ru.Dst.IP.IsLoopback() {
-		return nil
-	}
-	if ru.Src.IsLinkLocalUnicast() {
-		return nil
-	}
-	if ru.Dst.IP.IsLinkLocalUnicast() {
-		return nil
-	}
-	if ru.Dst.IP.IsInterfaceLocalMulticast() {
-		return nil
-	}
-	if ru.Dst.IP.IsLinkLocalMulticast() {
-		return nil
+	if ru.Dst != nil {
+		if ru.Dst.IP.IsLoopback() {
+			return nil
+		}
+		if ru.Src.IsLinkLocalUnicast() {
+			return nil
+		}
+		if ru.Dst.IP.IsLinkLocalUnicast() {
+			return nil
+		}
+		if ru.Dst.IP.IsInterfaceLocalMulticast() {
+			return nil
+		}
+		if ru.Dst.IP.IsLinkLocalMulticast() {
+			return nil
+		}
 	}
 
 	//skip if route is subnet of static route
