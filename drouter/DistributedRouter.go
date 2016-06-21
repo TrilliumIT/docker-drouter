@@ -338,23 +338,20 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, conn
 		}
 		drn = newNetwork(&nr)
 
-		if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-			connect <- drn
-			return nil
-		}
+		connect <- drn
 	}
 
 	//we dont' manage this network, or it's not connected
-	if !drn.isDRouter() || !drn.isConnected() {
+	if !drn.isDRouter() {
 		return nil
 	}
 
 	if event.Actor.Attributes["container"] == selfContainerID {
 		switch event.Action {
 		case "connect":
-			return dr.selfNetworkConnectEvent(event.Actor.ID)
+			return dr.selfNetworkConnectEvent(drn)
 		case "disconnect":
-			return dr.selfNetworkDisconnectEvent(event.Actor.ID)
+			return dr.selfNetworkDisconnectEvent(drn)
 		default:
 			return nil
 		}
@@ -367,9 +364,9 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, conn
 
 	switch event.Action {
 	case "connect":
-		return c.networkConnectEvent(event.Actor.ID)
+		return c.networkConnectEvent()
 	case "disconnect":
-		return c.networkDisconnectEvent(event.Actor.ID)
+		return c.networkDisconnectEvent(drn)
 	default:
 		//we don't handle whatever action this is (yet?)
 		return nil
@@ -520,15 +517,15 @@ Containers:
 	return nil
 }
 
-func (dr *distributedRouter) selfNetworkConnectEvent(networkID string) error {
-	dr.networks[networkID].adminDown = false
+func (dr *distributedRouter) selfNetworkConnectEvent(drn *network) error {
+	drn.adminDown = false
 
 	return nil
 }
 
-func (dr *distributedRouter) selfNetworkDisconnectEvent(networkID string) error {
+func (dr *distributedRouter) selfNetworkDisconnectEvent(drn *network) error {
 	if aggressive {
-		dr.networks[networkID].adminDown = true
+		drn.adminDown = true
 	}
 
 	return nil
