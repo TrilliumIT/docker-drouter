@@ -198,40 +198,45 @@ func (c *container) networkConnectEvent(drn *network) error {
 
 // called during a network disconnect event
 func (c *container) networkDisconnectEvent(drn *network) error {
-	//TODO: remove all routes from container, just in case it's an admin disconnect, rather than a stop
-	//TODO: then, test for other possible connections to the container,
-	//TODO: and if so, re-install the routes through that gateway
+
+	all, _ := netlink.ParseIPNet("0.0.0.0/0")
+	err := c.delRoutes(all)
+	if err != nil {
+		log.Errorf("Error removing routes from container")
+	}
+
+	if pIP, _ := c.getPathIP(); pIP != nil {
+		c.addAllRoutes()
+	}
+
+	if aggressive {
+		return nil
+	}
 
 	//if not aggressive mode, then we disconnect from the network if this is the last connected container
-	if !aggressive {
-		inUse := false
-		//loop through all the containers
-		dockerContainers, err := dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
-		if err != nil {
-			return err
+
+	//loop through all the containers
+	dockerContainers, err := dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, dc := range dockerContainers {
+		if dc.HostConfig.NetworkMode == "host" {
+			continue
+		}
+		if dc.ID == selfContainerID {
+			continue
 		}
 
-	Containers:
-		for _, dc := range dockerContainers {
-			if dc.HostConfig.NetworkMode == "host" {
-				continue
+		for n, _ := range dc.NetworkSettings.Networks {
+			if n == drn.Name {
+				// This netowork is still in use
+				return nil
 			}
-			if dc.ID == selfContainerID {
-				continue
-			}
-
-			for n, _ := range dc.NetworkSettings.Networks {
-				if n == drn.Name {
-					inUse = true
-					break Containers
-				}
-			}
-		}
-
-		if !inUse {
-			//TODO: disconnect logic here
 		}
 	}
+
+	drn.disconnect()
 
 	return nil
 }
