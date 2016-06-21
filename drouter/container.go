@@ -247,14 +247,14 @@ func (c *container) disconnectEvent(drn *network) error {
 	for _, ic := range drn.IPAM.Config {
 		subnet, err := netlink.ParseIPNet(ic.Subnet)
 		if err != nil {
-			log.Error("Failed to parse ipam config subnet: %v", ic.Subnet)
+			log.Errorf("Failed to parse ipam config subnet: %v", ic.Subnet)
 			log.Error(err)
 			continue
 		}
 		c.delRoutesVia(subnet)
 	}
 
-	if pIP, _ := c.getPathIP(); pIP != nil {
+	if _, err := c.getPathIP(); err == nil {
 		c.addAllRoutes()
 	}
 
@@ -292,6 +292,10 @@ func (c *container) disconnectEvent(drn *network) error {
 
 //returns a drouter IP that is on some same network as provided container
 func (c *container) getPathIP() (net.IP, error) {
+	if c.handle == nil {
+		return nil, fmt.Errorf("No namespace handle for container, is it running?")
+	}
+
 	addrs, err := c.handle.AddrList(nil, netlink.FAMILY_V4)
 	if err != nil {
 		log.Error("Failed to list container addresses.")

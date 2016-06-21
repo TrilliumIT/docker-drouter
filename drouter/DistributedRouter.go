@@ -511,7 +511,7 @@ Containers:
 					go func() {
 						c.delRoutesVia(ru.Dst)
 
-						if pIP, _ := c.getPathIP(); pIP != nil {
+						if _, err := c.getPathIP(); err == nil {
 							c.addAllRoutes()
 						}
 					}()
