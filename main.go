@@ -73,7 +73,7 @@ func main() {
 }
 
 // Run initializes the driver
-func Run(ctx *cli.Context) {
+func Run(ctx *cli.Context) error {
 	log.SetFormatter(&log.TextFormatter{
 		//ForceColors: false,
 		//DisableColors: true,
@@ -87,7 +87,7 @@ func Run(ctx *cli.Context) {
 	}
 
 	opts := &drouter.DistributedRouterOptions{
-		IpOffset:      ctx.Int("ip-offset"),
+		IPOffset:      ctx.Int("ip-offset"),
 		Aggressive:    !ctx.Bool("no-aggressive"),
 		LocalShortcut: ctx.Bool("local-shortcut"),
 		LocalGateway:  ctx.Bool("local-gateway"),
@@ -97,27 +97,22 @@ func Run(ctx *cli.Context) {
 		TransitNet:    ctx.String("transit-net"),
 	}
 
-	dr, err := drouter.NewDistributedRouter(opts)
-	if err != nil {
-		log.Fatal(err)
-	}
+	quit := make(chan string)
 
-	c := make(chan os.Signal, 1)
+	c := make(chan os.Signal)
+	defer close(c)
 	signal.Notify(c, os.Interrupt)
 	signal.Notify(c, syscall.SIGTERM)
 	go func() {
 		<-c
-		err := dr.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-		os.Exit(0)
+		close(quit)
 	}()
 
-	err = dr.Start()
+	err := drouter.Run(opts, quit)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		return err
 	}
 
-	log.Debug("This space is intenionally left blank.")
+	return nil
 }

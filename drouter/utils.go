@@ -1,11 +1,16 @@
 package drouter
 
 import (
+	"bufio"
+	"fmt"
 	log "github.com/Sirupsen/logrus"
 	dockertypes "github.com/docker/engine-api/types"
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
 	"golang.org/x/net/context"
 	"net"
+	"os"
+	"strings"
 )
 
 func netlinkHandleFromPid(pid int) (*netlink.Handle, error) {
@@ -27,7 +32,7 @@ func insertMasqRule() error {
 	return nil
 }
 
-func NetworkID(n *net.IPNet) *net.IPNet {
+func networkID(n *net.IPNet) *net.IPNet {
 	ip := n.IP.To4()
 	if ip == nil {
 		ip = n.IP
@@ -96,10 +101,10 @@ func getSelfContainer() (*dockertypes.ContainerJSON, error) {
 	return nil, fmt.Errorf("Container not found")
 }
 
-func SubnetEqualSubnet(net1, net2 *net.IPNet) bool {
+func subnetEqualSubnet(net1, net2 *net.IPNet) bool {
 	if net1.Contains(net2.IP) {
-		n1len, n1bits := sr.Mask.Size()
-		n2len, n2bits := sn.Mask.Size()
+		n1len, n1bits := net1.Mask.Size()
+		n2len, n2bits := net2.Mask.Size()
 		if n1len == n2len && n1bits == n2bits {
 			return true
 		}
@@ -107,10 +112,10 @@ func SubnetEqualSubnet(net1, net2 *net.IPNet) bool {
 	return false
 }
 
-func SubnetContainsSubnet(supernet, subnet *net.IPNet) bool {
-	if net1.Contains(net2.IP) {
-		n1len, n1bits := sr.Mask.Size()
-		n2len, n2bits := sn.Mask.Size()
+func subnetContainsSubnet(supernet, subnet *net.IPNet) bool {
+	if supernet.Contains(subnet.IP) {
+		n1len, n1bits := supernet.Mask.Size()
+		n2len, n2bits := subnet.Mask.Size()
 		if n1len <= n2len && n1bits == n2bits {
 			return true
 		}
