@@ -173,30 +173,33 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 	connectNetwork := make(chan *dockertypes.NetworkResource)
 	if aggressive {
 		go func() {
-			log.Debug("Syncing networks from docker.")
+			for {
+				log.Debug("Syncing networks from docker.")
 
-			//get all networks from docker
-			dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
-			if err != nil {
-				log.Error("Error getting network list")
-				log.Error(err)
-			}
-
-			//learn the docker networks
-			for _, dn := range dockerNets {
-				if dn.ID == transitNetID {
-					continue
+				//get all networks from docker
+				dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
+				if err != nil {
+					log.Error("Error getting network list")
+					log.Error(err)
 				}
 
-				//do we know about this network already?
-				drn, ok := dr.networks[dn.ID]
-				if !ok {
-					drn = newNetwork(&dn)
-				}
+				//learn the docker networks
+				for _, dn := range dockerNets {
+					if dn.ID == transitNetID {
+						continue
+					}
 
-				if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-					connectNetwork <- &dn
+					//do we know about this network already?
+					drn, ok := dr.networks[dn.ID]
+					if !ok {
+						drn = newNetwork(&dn)
+					}
+
+					if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
+						connectNetwork <- &dn
+					}
 				}
+				time.Sleep(5 * time.Second)
 			}
 
 		}()
@@ -540,44 +543,6 @@ func (dr *distributedRouter) initTransitNet() error {
 	if err != nil {
 		log.Errorf("Failed to connect to transit net: %v", nr.Name)
 		return err
-	}
-
-	return nil
-}
-
-//learns networks from docker and manages connections
-func (dr *distributedRouter) syncNetworks() error {
-	log.Debug("Syncing networks from docker.")
-
-	//get all networks from docker
-	dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
-	if err != nil {
-		log.Error("Error getting network list")
-		return err
-	}
-
-	//learn the docker networks
-	for _, dn := range dockerNets {
-		if dn.ID == transitNetID {
-			continue
-		}
-
-		//do we know about this network already?
-		_, ok := dr.networks[dn.ID]
-
-		if !ok {
-			//no, create it
-			dr.networks[dn.ID] = newNetwork(&dn)
-		}
-		drn := dr.networks[dn.ID]
-
-		if drn.isConnected() {
-			continue
-		}
-
-		if drn.isDRouter() && !drn.adminDown {
-			go drn.connect()
-		}
 	}
 
 	return nil
