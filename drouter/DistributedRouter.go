@@ -384,22 +384,24 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 	if ru.Src.IsLoopback() {
 		return nil
 	}
-	if ru.Dst != nil {
-		if ru.Dst.IP.IsLoopback() {
-			return nil
-		}
-		if ru.Src.IsLinkLocalUnicast() {
-			return nil
-		}
-		if ru.Dst.IP.IsLinkLocalUnicast() {
-			return nil
-		}
-		if ru.Dst.IP.IsInterfaceLocalMulticast() {
-			return nil
-		}
-		if ru.Dst.IP.IsLinkLocalMulticast() {
-			return nil
-		}
+	if ru.Dst == nil {
+		//we manage default routes separately
+		return nil
+	}
+	if ru.Dst.IP.IsLoopback() {
+		return nil
+	}
+	if ru.Src.IsLinkLocalUnicast() {
+		return nil
+	}
+	if ru.Dst.IP.IsLinkLocalUnicast() {
+		return nil
+	}
+	if ru.Dst.IP.IsInterfaceLocalMulticast() {
+		return nil
+	}
+	if ru.Dst.IP.IsLinkLocalMulticast() {
+		return nil
 	}
 
 	//skip if route is subnet of static route
