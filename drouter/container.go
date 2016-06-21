@@ -72,6 +72,11 @@ func (c *container) addRoute(prefix *net.IPNet) {
 		return
 	}
 
+	if (prefix.IP.To4() == nil) != (gateway.To4() == nil) {
+		// Dst is a different IP family
+		return
+	}
+
 	route := &netlink.Route{
 		Dst: prefix,
 		Gw:  gateway,
