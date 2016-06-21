@@ -17,19 +17,21 @@ import (
 )
 
 var (
-	selfContainerID string
-	hostNamespace   *netlink.Handle
+	//cli options
 	ipOffset        int
-	dockerClient    *dockerclient.Client
 	aggressive      bool
 	localShortcut   bool
 	localGateway    bool
 	masquerade      bool
-	transitNetName  string
-	transitNetID    string
 	p2p             p2pNetwork
 	staticRoutes    []*net.IPNet
-	hostUnderlay    *net.IPNet
+	transitNetName  string
+	selfContainerID string
+	//other globals
+	hostNamespace *netlink.Handle
+	dockerClient  *dockerclient.Client
+	transitNetID  string
+	hostUnderlay  *net.IPNet
 )
 
 //DistributedRouterOptions Options for our DistributedRouter instance
@@ -51,8 +53,30 @@ type distributedRouter struct {
 
 func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter, error) {
 	var err error
+	//set global vars from options
+	ipOffset = options.IPOffset
+	aggressive = options.Aggressive
+	localShortcut = options.LocalShortcut
+	localGateway = options.LocalGateway
+	masquerade = options.Masquerade
+	//staticRoutes
+	for _, sr := range options.StaticRoutes {
+		_, cidr, err := net.ParseCIDR(sr)
+		if err != nil {
+			log.Errorf("Failed to parse static route: %v", sr)
+			continue
+		}
+		staticRoutes = append(staticRoutes, cidr)
+	}
 
-	if !options.Aggressive && len(options.TransitNet) == 0 {
+	transitNetName = options.TransitNet
+
+	hostNamespace, err = netlinkHandleFromPid(1)
+	if err != nil {
+		return &distributedRouter{}, fmt.Errorf("Failed to get the host's namespace.")
+	}
+
+	if !aggressive && len(transitNetName) == 0 {
 		return &distributedRouter{}, fmt.Errorf("Detected --no-aggressive, and --transit-net was not found.")
 	}
 
@@ -71,9 +95,7 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	}
 
 	//process options for assumptions and validity
-	localShortcut := options.LocalShortcut
-	localGateway := options.LocalGateway
-	if options.Masquerade {
+	if masquerade {
 		log.Debug("Detected --masquerade. Assuming --local-gateway and --local-shortcut.")
 		localShortcut = true
 		localGateway = true
@@ -82,16 +104,6 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 			log.Debug("Detected --local-gateway. Assuming --local-shortcut.")
 			localShortcut = true
 		}
-	}
-
-	var sroutes []*net.IPNet
-	for _, sr := range options.StaticRoutes {
-		_, cidr, err := net.ParseCIDR(sr)
-		if err != nil {
-			log.Errorf("Failed to parse static route: %v", sr)
-			continue
-		}
-		sroutes = append(sroutes, cidr)
 	}
 
 	sc, err := getSelfContainer()
@@ -145,7 +157,7 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 }
 
 //Run creates and runs a drouter instance
-func Run(opts *DistributedRouterOptions, shutdown <-chan string) error {
+func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 	dr, err := newDistributedRouter(opts)
 	if err != nil {
 		return err
@@ -158,14 +170,36 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan string) error {
 		}
 	}
 
-	var aggressiveTimer <-chan time.Time
-
+	connectNetwork := make(chan *dockertypes.NetworkResource)
 	if aggressive {
-		aggressiveTimer = time.NewTimer(time.Second * 5).C
-	}
+		go func() {
+			log.Debug("Syncing networks from docker.")
 
-	if aggressiveTimer == nil {
-		aggressiveTimer = make(<-chan time.Time)
+			//get all networks from docker
+			dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
+			if err != nil {
+				log.Error("Error getting network list")
+				log.Error(err)
+			}
+
+			//learn the docker networks
+			for _, dn := range dockerNets {
+				if dn.ID == transitNetID {
+					continue
+				}
+
+				//do we know about this network already?
+				drn, ok := dr.networks[dn.ID]
+				if !ok {
+					drn = newNetwork(&dn)
+				}
+
+				if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
+					connectNetwork <- &dn
+				}
+			}
+
+		}()
 	}
 
 	dockerEvent := make(chan dockerevents.Message)
@@ -188,13 +222,17 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan string) error {
 Main:
 	for {
 		select {
-		case _ = <-aggressiveTimer:
-			err = dr.syncNetworks()
-			if err != nil {
-				log.Error(err)
+		case n := <-connectNetwork:
+			drn, ok := dr.networks[n.ID]
+			if !ok {
+				drn = newNetwork(n)
+			}
+
+			if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
+				go drn.connect()
 			}
 		case e := <-dockerEvent:
-			err = dr.processDockerEvent(e)
+			err = dr.processDockerEvent(e, connectNetwork)
 			if err != nil {
 				log.Error(err)
 			}
@@ -276,7 +314,7 @@ func (dr *distributedRouter) setDefaultRoute() error {
 }
 
 // Watch for container events
-func (dr *distributedRouter) processDockerEvent(event dockerevents.Message) error {
+func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, connect chan *dockertypes.NetworkResource) error {
 	// we currently only care about network events
 	if event.Type != "network" {
 		return nil
@@ -284,7 +322,6 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message) erro
 
 	// have we learned this network?
 	drn, ok := dr.networks[event.Actor.ID]
-
 	if !ok {
 		//inspect network
 		nr, err := dockerClient.NetworkInspect(context.Background(), event.Actor.ID)
@@ -292,8 +329,17 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message) erro
 			log.Errorf("Failed to inspect network at: %v", event.Actor.ID)
 			return err
 		}
-		//learn network
-		dr.networks[event.Actor.ID] = newNetwork(&nr)
+		drn = newNetwork(&nr)
+
+		if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
+			connect <- &nr
+			return nil
+		}
+	}
+
+	//we dont' manage this network, or it's not connected
+	if !drn.isDRouter() || !drn.isConnected() {
+		return nil
 	}
 
 	if event.Actor.Attributes["container"] == selfContainerID {
@@ -311,13 +357,6 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message) erro
 	if err != nil {
 		return err
 	}
-
-	//we dont' manage this network, ignore
-	if !drn.isDRouter() {
-		return nil
-	}
-
-	//log.Debugf("Event.Actor: %v", event.Actor)
 
 	switch event.Action {
 	case "connect":
