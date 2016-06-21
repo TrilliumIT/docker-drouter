@@ -177,7 +177,7 @@ func (c *container) replaceGateway(gateway net.IP) error {
 }
 
 // called during a network connect event
-func (c *container) networkConnectEvent(networkID string) error {
+func (c *container) networkConnectEvent() error {
 	//let's push our routes into this new container
 	gateway, err := c.getPathIP()
 	if err != nil {
@@ -194,7 +194,7 @@ func (c *container) networkConnectEvent(networkID string) error {
 }
 
 // called during a network disconnect event
-func (c *container) networkDisconnectEvent(networkID string) error {
+func (c *container) networkDisconnectEvent(drn *network) error {
 	//TODO: remove all routes from container, just in case it's an admin disconnect, rather than a stop
 	//TODO: then, test for other possible connections to the container,
 	//TODO: and if so, re-install the routes through that gateway
@@ -217,8 +217,8 @@ func (c *container) networkDisconnectEvent(networkID string) error {
 				continue
 			}
 
-			for _, n := range dc.NetworkSettings.Networks {
-				if networkID == n.NetworkID {
+			for n, _ := range dc.NetworkSettings.Networks {
+				if n == drn.Name {
 					inUse = true
 					break Containers
 				}
