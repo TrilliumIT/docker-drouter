@@ -98,7 +98,7 @@ func (c *container) addRoute(prefix *net.IPNet) {
 	}
 }
 
-func (c *container) delRoutesVia(drn *network) {
+func (c *container) delRoutesVia(sn *net.IPNet) {
 	routes, err := c.getRoutes()
 	if err != nil {
 		log.Error("Failed to get container route table.")
@@ -123,20 +123,13 @@ func (c *container) delRoutesVia(drn *network) {
 			if !r.Gw.Equal(ipaddr.IP) {
 				continue
 			}
-			for _, ic := range drn.IPAM.Config {
-				sn, err := netlink.ParseIPNet(ic.Subnet)
-				if err != nil {
-					log.Errorf("Failed to parse IPNet %v", ic.Subnet)
-					continue
-				}
-				if !sn.Contains(r.Gw) {
-					continue
-				}
-				err = c.handle.RouteDel(&r)
-				if err != nil {
-					log.Errorf("Failed to delete container route to %v via %v", r.Dst, r.Gw)
-					continue
-				}
+			if !sn.Contains(r.Gw) {
+				continue
+			}
+			err = c.handle.RouteDel(&r)
+			if err != nil {
+				log.Errorf("Failed to delete container route to %v via %v", r.Dst, r.Gw)
+				continue
 			}
 		}
 	}
@@ -226,7 +219,7 @@ func (c *container) replaceGateway(gateway net.IP) error {
 }
 
 // called during a network connect event
-func (c *container) networkConnectEvent(drn *network) error {
+func (c *container) connectEvent(drn *network) error {
 	if !drn.isConnected() {
 		drn.connect()
 		//return now because the routeEvent will trigger routes to be installed in this container
@@ -249,9 +242,17 @@ func (c *container) networkConnectEvent(drn *network) error {
 }
 
 // called during a network disconnect event
-func (c *container) networkDisconnectEvent(drn *network) error {
+func (c *container) disconnectEvent(drn *network) error {
 
-	c.delRoutesVia(drn)
+	for _, ic := range drn.IPAM.Config {
+		subnet, err := netlink.ParseIPNet(ic.Subnet)
+		if err != nil {
+			log.Error("Failed to parse ipam config subnet: %v", ic.Subnet)
+			log.Error(err)
+			continue
+		}
+		c.delRoutesVia(subnet)
+	}
 
 	if pIP, _ := c.getPathIP(); pIP != nil {
 		c.addAllRoutes()
