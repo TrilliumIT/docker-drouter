@@ -125,7 +125,9 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	}
 
 	//create our distributedRouter object
-	dr := &distributedRouter{}
+	dr := &distributedRouter{
+		networks: make(map[string]*network),
+	}
 
 	//initial setup
 	if localShortcut {
@@ -233,7 +235,7 @@ Main:
 			}
 
 			if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-				go drn.connect()
+				drn.connect()
 			}
 		case e := <-dockerEvent:
 			err = dr.processDockerEvent(e, connectNetwork)
@@ -403,6 +405,7 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 	//skip if route is subnet of static route
 	for _, sr := range staticRoutes {
 		if subnetContainsSubnet(sr, ru.Dst) {
+			//static routes include P2P network
 			log.Debugf("Skipping route %v covered by %v.", ru.Dst, sr)
 			return nil
 		}
