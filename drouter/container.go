@@ -94,6 +94,50 @@ func (c *container) addRoute(prefix *net.IPNet) {
 	}
 }
 
+func (c *container) delRoutesVia(drn *network) {
+	routes, err := c.handle.RouteList(nil, netlink.FAMILY_V4)
+	if err != nil {
+		log.Error("Failed to get container route table.")
+		log.Error(err)
+		return
+	}
+
+	//get all drouter ips
+	ips, err := netlink.AddrList(nil, netlink.FAMILY_V4)
+	if err != nil {
+		log.Error("Failed to get drouter ip addresses.")
+		log.Error(err)
+		return
+	}
+
+	for _, r := range routes {
+		if r.Dst == nil {
+			continue
+		}
+
+		for _, ipaddr := range ips {
+			if !r.Gw.Equal(ipaddr.IP) {
+				continue
+			}
+			for _, ic := range drn.IPAM.Config {
+				sn, err := netlink.ParseIPNet(ic.Subnet)
+				if err != nil {
+					log.Errorf("Failed to parse IPNet %v", ic.Subnet)
+					continue
+				}
+				if !sn.Contains(r.Gw) {
+					continue
+				}
+				err = c.handle.RouteDel(&r)
+				if err != nil {
+					log.Errorf("Failed to delete container route to %v via %v", r.Dst, r.Gw)
+					continue
+				}
+			}
+		}
+	}
+}
+
 func (c *container) delRoutes(prefix *net.IPNet) {
 	//get all container routes
 	routes, err := c.handle.RouteList(nil, netlink.FAMILY_V4)
@@ -120,12 +164,13 @@ func (c *container) delRoutes(prefix *net.IPNet) {
 		}
 
 		for _, ipaddr := range ips {
-			if r.Gw.Equal(ipaddr.IP) {
-				err := c.handle.RouteDel(&r)
-				if err != nil {
-					log.Errorf("Failed to delete container route to %v via %v", r.Dst, r.Gw)
-					continue
-				}
+			if !r.Gw.Equal(ipaddr.IP) {
+				continue
+			}
+			err := c.handle.RouteDel(&r)
+			if err != nil {
+				log.Errorf("Failed to delete container route to %v via %v", r.Dst, r.Gw)
+				continue
 			}
 		}
 	}
@@ -199,11 +244,7 @@ func (c *container) networkConnectEvent(drn *network) error {
 // called during a network disconnect event
 func (c *container) networkDisconnectEvent(drn *network) error {
 
-	all, _ := netlink.ParseIPNet("0.0.0.0/0")
-	err := c.delRoutes(all)
-	if err != nil {
-		log.Errorf("Error removing routes from container")
-	}
+	c.delRoutesVia(drn)
 
 	if pIP, _ := c.getPathIP(); pIP != nil {
 		c.addAllRoutes()
