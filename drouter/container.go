@@ -103,7 +103,7 @@ func (c *container) addRoute(prefix *net.IPNet) {
 			return
 		}
 		for _, r := range routes {
-			if r.Gw.Equal(gateway) {
+			if r.Gw.Equal(gateway) || r.Gw == nil {
 				return
 			}
 			err := c.handle.RouteDel(&netlink.Route{Dst: prefix, Gw: r.Gw})
