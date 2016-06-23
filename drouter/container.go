@@ -17,8 +17,11 @@ type container struct {
 func newContainerFromID(id string) (*container, error) {
 	cjson, err := dockerClient.ContainerInspect(context.Background(), id)
 	if err != nil {
+		log.Error("Failed to inspect container with id: %v", id)
 		return nil, err
 	}
+	log.Debugf("Inspected container: %v", cjson.Name)
+
 	if !cjson.State.Running {
 		return &container{}, nil
 	}
@@ -138,7 +141,7 @@ func (c *container) delRoutes(to, via *net.IPNet) {
 		if r.Dst == nil {
 			continue
 		}
-		if !subnetContainsSubnet(to, r.Dst) {
+		if to != nil && !subnetContainsSubnet(to, r.Dst) {
 			continue
 		}
 
@@ -146,7 +149,7 @@ func (c *container) delRoutes(to, via *net.IPNet) {
 			if !r.Gw.Equal(ipaddr.IP) {
 				continue
 			}
-			if !via.Contains(r.Gw) {
+			if via != nil && !via.Contains(r.Gw) {
 				continue
 			}
 			err := c.handle.RouteDel(&r)
@@ -226,7 +229,7 @@ func (c *container) connectEvent(drn *network) error {
 	return nil
 }
 
-// called during a network disconnect event
+// called when we detect a container has disconnected from a drouter network
 func (c *container) disconnectEvent(drn *network) error {
 
 	for _, ic := range drn.IPAM.Config {
@@ -236,7 +239,7 @@ func (c *container) disconnectEvent(drn *network) error {
 			log.Error(err)
 			continue
 		}
-		c.delRoutes(makeGlobalNet(), subnet)
+		c.delRoutes(nil, subnet)
 	}
 
 	if _, err := c.getPathIP(); err == nil {

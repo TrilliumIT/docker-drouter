@@ -92,7 +92,7 @@ func Run(ctx *cli.Context) error {
 		LocalShortcut: ctx.Bool("local-shortcut"),
 		LocalGateway:  ctx.Bool("local-gateway"),
 		Masquerade:    ctx.Bool("masquerade"),
-		P2pNet:        ctx.String("p2p-net"),
+		P2PAddr:       ctx.String("p2p-net"),
 		StaticRoutes:  ctx.StringSlice("static-route"),
 		TransitNet:    ctx.String("transit-net"),
 	}

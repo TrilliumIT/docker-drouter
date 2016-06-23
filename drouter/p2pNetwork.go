@@ -9,59 +9,67 @@ import (
 )
 
 type p2pNetwork struct {
-	network *net.IPNet
-	hostIP  net.IP
-	selfIP  net.IP
+	network       *net.IPNet
+	hostIP        net.IP
+	selfIP        net.IP
+	hostNamespace *netlink.Handle
+	hostUnderlay  *net.IPNet
 }
 
-func makeP2PLink(p2paddr string) error {
+func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
+	hns, err := netlinkHandleFromPid(1)
+	if err != nil {
+		log.Error("Failed to get the host's namespace.")
+		return nil, err
+	}
+
 	log.Debugf("Making a p2p network for: %v", p2paddr)
 	host_link_veth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{Name: "drouter_veth0"},
 		PeerName:  "drouter_veth1",
 	}
-	err := hostNamespace.LinkAdd(host_link_veth)
+	err = hns.LinkAdd(host_link_veth)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	host_link, err := hostNamespace.LinkByName("drouter_veth0")
+	host_link, err := hns.LinkByName("drouter_veth0")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	int_link, err := hostNamespace.LinkByName("drouter_veth1")
+	int_link, err := hns.LinkByName("drouter_veth1")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	err = hostNamespace.LinkSetNsPid(int_link, os.Getpid())
+	err = hns.LinkSetNsPid(int_link, os.Getpid())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	int_link, err = netlink.LinkByName("drouter_veth1")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, p2p_net, err := net.ParseCIDR(p2paddr)
+	_, p2pIPNet, err := net.ParseCIDR(p2paddr)
 	if err != nil {
 		log.Errorf("Failed to parse the CIDR string for p2p network: %v", p2paddr)
-		return err
+		return nil, err
 	}
-	p2p.network = p2p_net
+	p2p.network = p2pIPNet
 
-	host_addr := *p2p_net
+	host_addr := *p2pIPNet
 	host_addr.IP = netaddr.IPAdd(host_addr.IP, 1)
 	host_netlink_addr := &netlink.Addr{
 		IPNet: &host_addr,
 		Label: "",
 	}
-	err = hostNamespace.AddrAdd(host_link, host_netlink_addr)
+	err = hns.AddrAdd(host_link, host_netlink_addr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	p2p.hostIP = host_addr.IP
 
-	int_addr := *p2p_net
+	int_addr := *p2pIPNet
 	int_addr.IP = netaddr.IPAdd(int_addr.IP, 2)
 	int_netlink_addr := &netlink.Addr{
 		IPNet: &int_addr,
@@ -69,96 +77,124 @@ func makeP2PLink(p2paddr string) error {
 	}
 	err = netlink.AddrAdd(int_link, int_netlink_addr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	p2p.selfIP = int_addr.IP
 
 	err = netlink.LinkSetUp(int_link)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = hostNamespace.LinkSetUp(host_link)
+	err = hns.LinkSetUp(host_link)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	//discover host underlay address/network
-	hroutes, err := hostNamespace.RouteList(nil, netlink.FAMILY_V4)
+	hunderlay := &net.IPNet{}
+	hroutes, err := hns.RouteList(nil, netlink.FAMILY_V4)
 	if err != nil {
-		return err
+		return nil, err
 	}
 Hroutes:
 	for _, r := range hroutes {
 		if r.Gw != nil {
 			continue
 		}
-		link, err := hostNamespace.LinkByIndex(r.LinkIndex)
+		link, err := hns.LinkByIndex(r.LinkIndex)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		addrs, err := hostNamespace.AddrList(link, netlink.FAMILY_V4)
+		addrs, err := hns.AddrList(link, netlink.FAMILY_V4)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for _, addr := range addrs {
 			if !addr.IP.Equal(r.Src) {
 				continue
 			}
-			hostUnderlay.IP = addr.IP
-			hostUnderlay.Mask = addr.Mask
+			hunderlay.IP = addr.IP
+			hunderlay.Mask = addr.Mask
 			break Hroutes
 		}
 	}
 
-	log.Debugf("Discovered host underlay as: %v", hostUnderlay)
+	log.Debugf("Discovered host underlay as: %v", hunderlay)
 
-	staticRoutes = append(staticRoutes, networkID(hostUnderlay))
+	staticRoutes = append(staticRoutes, networkID(hunderlay))
 
 	hroute := &netlink.Route{
 		LinkIndex: int_link.Attrs().Index,
-		Dst:       networkID(hostUnderlay),
+		Dst:       networkID(hunderlay),
 		Gw:        host_addr.IP,
 	}
 
 	log.Debug("Adding drouter route to %v via %v.", hroute.Dst, hroute.Gw)
 	err = netlink.RouteAdd(hroute)
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	p2pnet := &p2pNetwork{
+		network:       p2pIPNet,
+		hostIP:        host_addr.IP,
+		selfIP:        int_addr.IP,
+		hostNamespace: hns,
+		hostUnderlay:  hunderlay,
 	}
 
 	for _, sr := range staticRoutes {
-		if hroute.Dst.Contains(sr.IP) {
-			srlen, srbits := sr.Mask.Size()
-			hrlen, hrbits := hroute.Dst.Mask.Size()
-			if hrlen <= srlen && hrbits == srbits {
-				log.Debugf("Skipping route %v covered by %v.", hroute.Dst, sr)
-				continue
-			}
-		}
-		sroute := &netlink.Route{
-			LinkIndex: host_link.Attrs().Index,
-			Dst:       sr,
-			Gw:        int_addr.IP,
-			Src:       hostUnderlay.IP,
-		}
-
-		log.Infof("Adding host route to %v via %v.", sroute.Dst, sroute.Gw)
-		err = hostNamespace.RouteAdd(sroute)
-		if err != nil {
-			log.Error(err)
+		if subnetContainsSubnet(hroute.Dst, sr) {
+			log.Debugf("Skipping static route %v covered by host underlay: %v", sr, hroute.Dst)
 			continue
 		}
+		go p2pnet.addHostRoute(sr)
 	}
 
-	return nil
+	return p2pnet, nil
 }
 
-func removeP2PLink() error {
-	host_link, err := hostNamespace.LinkByName("drouter_veth0")
+func (p *p2pNetwork) remove() error {
+	host_link, err := p.hostNamespace.LinkByName("drouter_veth0")
 	if err != nil {
 		return err
 	}
 
-	return hostNamespace.LinkDel(host_link)
+	return p.hostNamespace.LinkDel(host_link)
+}
+
+func (p *p2pNetwork) addHostRoute(sn *net.IPNet) {
+	route := &netlink.Route{
+		Gw:  p.selfIP,
+		Dst: sn,
+		Src: p.hostUnderlay.IP,
+	}
+	if (route.Dst.IP.To4() == nil) != (route.Gw.To4() == nil) {
+		// Dst is a different IP family
+		return
+	}
+
+	log.Debugf("Injecting shortcut route to %v via drouter into host routing table.", sn)
+	err := p.hostNamespace.RouteAdd(route)
+	if err != nil {
+		log.Error(err)
+	}
+}
+
+func (p *p2pNetwork) delHostRoute(sn *net.IPNet) {
+	route := &netlink.Route{
+		Gw:  p.selfIP,
+		Dst: sn,
+	}
+	if (route.Dst.IP.To4() == nil) != (route.Gw.To4() == nil) {
+		// Dst is a different IP family
+		return
+	}
+
+	log.Debugf("Removing shortcut route to %v via drouter into host routing table.", sn)
+	err := p.hostNamespace.RouteDel(route)
+	if err != nil {
+		log.Error(err)
+	}
 }
