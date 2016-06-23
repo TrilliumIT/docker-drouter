@@ -283,14 +283,6 @@ Main:
 		}(drn)
 	}
 
-	//removing the p2p network cleans up the host routes automatically
-	if localShortcut {
-		err := p2p.remove()
-		if err != nil {
-			return err
-		}
-	}
-
 	disconnectWait := make(chan struct{})
 	go func() {
 		defer close(disconnectWait)
@@ -305,6 +297,15 @@ Done:
 			break Done
 		}
 	}
+
+	//delete the p2p link
+	if localShortcut {
+		err := p2p.remove()
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
