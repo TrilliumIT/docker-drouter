@@ -254,6 +254,7 @@ func (c *container) disconnectEvent(drn *network) error {
 	}
 
 	//if not aggressive mode, then we disconnect from the network if this is the last connected container
+	connectWG.Wait()
 
 	//loop through all the containers
 	dockerContainers, err := dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
