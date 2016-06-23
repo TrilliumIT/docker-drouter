@@ -72,6 +72,7 @@ func (drn *network) connect() {
 func (drn *network) disconnect() {
 	log.Debugf("Disconnecting from network: %v", drn.Name)
 
+	//TODO: remove shortcut route to this network if localShortcut
 	//TODO: remove all of the routes from connected containers
 	//TODO: remove this route from all other containers
 
