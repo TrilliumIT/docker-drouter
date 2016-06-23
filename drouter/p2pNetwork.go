@@ -195,7 +195,7 @@ func (p *p2pNetwork) delHostRoute(sn *net.IPNet) {
 		return
 	}
 
-	log.Debugf("Removing shortcut route to %v via drouter into host routing table.", sn)
+	log.Debugf("Removing shortcut route to %v via drouter from host routing table.", sn)
 	err := p.hostNamespace.RouteDel(route)
 	if err != nil {
 		log.Error(err)
