@@ -1,11 +1,13 @@
 package drouter
 
 import (
-	log "github.com/Sirupsen/logrus"
-	"github.com/vishvananda/netlink"
-	"github.com/ziutek/utils/netaddr"
 	"net"
 	"os"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/TrilliumIT/iputil"
+	"github.com/vishvananda/netlink"
+	"github.com/ziutek/utils/netaddr"
 )
 
 type p2pNetwork struct {
@@ -128,11 +130,11 @@ Hroutes:
 
 	log.Debugf("Discovered host underlay as: %v", hunderlay)
 
-	staticRoutes = append(staticRoutes, networkID(hunderlay))
+	staticRoutes = append(staticRoutes, iputil.NetworkID(hunderlay))
 
 	hroute := &netlink.Route{
 		LinkIndex: int_link.Attrs().Index,
-		Dst:       networkID(hunderlay),
+		Dst:       iputil.NetworkID(hunderlay),
 		Gw:        host_addr.IP,
 	}
 
@@ -151,7 +153,7 @@ Hroutes:
 	}
 
 	for _, sr := range staticRoutes {
-		if subnetContainsSubnet(hroute.Dst, sr) {
+		if iputil.SubnetContainsSubnet(hroute.Dst, sr) {
 			log.Debugf("Skipping static route %v covered by host underlay: %v", sr, hroute.Dst)
 			continue
 		}

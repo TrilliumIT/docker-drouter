@@ -1,16 +1,18 @@
 package drouter
 
 import (
+	"net"
+	"strconv"
+	"strings"
+
 	log "github.com/Sirupsen/logrus"
+	"github.com/TrilliumIT/iputil"
 	dockertypes "github.com/docker/engine-api/types"
 	dockernetworks "github.com/docker/engine-api/types/network"
 	"github.com/llimllib/ipaddress"
 	"github.com/vishvananda/netlink"
 	"github.com/ziutek/utils/netaddr"
 	"golang.org/x/net/context"
-	"net"
-	"strconv"
-	"strings"
 )
 
 type network struct {
@@ -131,7 +133,7 @@ func (n *network) isConnected() bool {
 				log.Error(err)
 				return false
 			}
-			if subnetEqualSubnet(r.Dst, subnet) {
+			if iputil.SubnetEqualSubnet(r.Dst, subnet) {
 				//if we are connected to /any/ subnet, then we must be connected to the vxlan already
 				//if we are missing only one subnet, we can't re-connect anyway
 				//so don't continue here
