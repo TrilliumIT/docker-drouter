@@ -227,9 +227,19 @@ func (c *container) connectEvent(drn *network) error {
 
 	if localGateway {
 		go c.replaceGateway(gateway)
-	} else {
-		go c.addAllRoutes()
+		return nil
 	}
+
+	for _, ic := range drn.IPAM.Config {
+		_, subnet, err := net.ParseCIDR(ic.Subnet)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		c.delRoutes(subnet, nil)
+	}
+
+	go c.addAllRoutes()
 	return nil
 }
 
