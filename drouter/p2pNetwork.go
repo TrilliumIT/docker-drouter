@@ -55,7 +55,6 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 		log.Errorf("Failed to parse the CIDR string for p2p network: %v", p2paddr)
 		return nil, err
 	}
-	p2p.network = p2pIPNet
 
 	host_addr := *p2pIPNet
 	host_addr.IP = netaddr.IPAdd(host_addr.IP, 1)
@@ -67,7 +66,6 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2p.hostIP = host_addr.IP
 
 	int_addr := *p2pIPNet
 	int_addr.IP = netaddr.IPAdd(int_addr.IP, 2)
@@ -79,7 +77,6 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2p.selfIP = int_addr.IP
 
 	err = netlink.LinkSetUp(int_link)
 	if err != nil {
