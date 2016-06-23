@@ -72,6 +72,9 @@ func (drn *network) connect() {
 func (drn *network) disconnect() {
 	log.Debugf("Disconnecting from network: %v", drn.Name)
 
+	//TODO: remove all of the routes from connected containers
+	//TODO: remove this route from all other containers
+
 	err := dockerClient.NetworkDisconnect(context.Background(), drn.ID, selfContainerID, true)
 	if err != nil {
 		log.Error(err)
@@ -142,4 +145,21 @@ func (n *network) isDRouter() bool {
 	}
 
 	return drouter
+}
+
+func (drn *network) connectEvent() error {
+	drn.adminDown = false
+
+	return nil
+}
+
+func (drn *network) disconnectEvent() error {
+	if aggressive {
+		drn.adminDown = true
+	}
+
+	//TODO: delete all routes from containers on this network
+	//TODO: delete this route from all other containers
+
+	return nil
 }

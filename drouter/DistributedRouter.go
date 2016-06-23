@@ -257,7 +257,10 @@ Main:
 				log.Error(err)
 			}
 		case r := <-routeEvent:
-			err = dr.processRouteEvent(&r)
+			if r.Type == syscall.RTM_DELROUTE {
+				break
+			}
+			err = dr.processRouteAddEvent(&r)
 			if err != nil {
 				log.Error(err)
 			}
@@ -293,22 +296,12 @@ Main:
 		networkDisconnectWG.Wait()
 	}()
 
-	go func() {
-		log.Debugf("Wait group: %+v", networkDisconnectWG)
-		time.Sleep(5 * time.Second)
-	}()
 Done:
 	for {
 		select {
 		case _ = <-disconnectWait:
 			log.Debug("Finished all network disconnects.")
 			break Done
-		case r := <-routeEvent:
-			log.Debugf("Recieved route event: %+v", r)
-			err = dr.processRouteEvent(&r)
-			if err != nil {
-				log.Error(err)
-			}
 		}
 	}
 	return nil
@@ -412,7 +405,7 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, lear
 	}
 }
 
-func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
+func (dr *distributedRouter) processRouteAddEvent(ru *netlink.RouteUpdate) error {
 	if ru.Table == 255 {
 		// We don't want entries from the local routing table
 		// http://linux-ip.net/html/routing-tables.html
@@ -423,6 +416,7 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 	}
 	if ru.Dst == nil {
 		//we manage default routes separately
+		//TODO: Add logic to fix default route since it should not change.
 		return nil
 	}
 	if ru.Dst.IP.IsLoopback() {
@@ -439,10 +433,6 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 	}
 	if ru.Dst.IP.IsLinkLocalMulticast() {
 		return nil
-	}
-
-	if ru.Type == syscall.RTM_DELROUTE {
-		defer networkDisconnectWG.Done()
 	}
 
 	coveredByStatic := false
@@ -463,19 +453,11 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 			// Dst is a different IP family
 			return nil
 		}
-		switch ru.Type {
-		case syscall.RTM_NEWROUTE:
-			log.Debugf("Injecting shortcut route to %v via drouter into host routing table.", ru.Dst)
-			err := hostNamespace.RouteAdd(route)
-			if err != nil {
-				log.Error(err)
-			}
-		case syscall.RTM_DELROUTE:
-			log.Debugf("Removing shortcut route to %v via drouter from host routing table.", ru.Dst)
-			err := hostNamespace.RouteDel(route)
-			if err != nil {
-				log.Error(err)
-			}
+
+		log.Debugf("Injecting shortcut route to %v via drouter into host routing table.", ru.Dst)
+		err := hostNamespace.RouteAdd(route)
+		if err != nil {
+			log.Error(err)
 		}
 	}
 
@@ -505,81 +487,71 @@ Containers:
 		//skip containers we don't have a direct route/connection to
 		//Can't call network.isconnected because bug in containerlist doesn't
 		//return networkID
+		thisRoute := false
 		connected := false
 	Endpoints:
 		for _, es := range dc.NetworkSettings.Networks {
 			ip := net.ParseIP(es.IPAddress)
+			//Is the container in the network we just added?
+			if ru.Dst.Contains(ip) {
+				thisRoute = true
+				connected = true
+				break Endpoints
+			}
+
+			//Are we connected to a same subnet?
+
+			/*
+				TODO: deprecate in favor of the correct way
+				Fixed in docker 1.12.0 rc2
+				https://github.com/docker/docker/issues/23596
+
+				Correct:
+				if dr.networks[es.NetworkID].isConnected() {
+					connected = true
+					break
+				}
+
+				Workaround:
+				Instead, we have to loop through our routes
+				find one with no gateway (locally attached)
+				and see if this container ip is in it
+			*/
 			for _, r := range routes {
 				if r.Gw != nil {
 					continue
 				}
 				if r.Dst.Contains(ip) {
 					connected = true
-					break Endpoints
+					continue Endpoints
 				}
 			}
 		}
+
+		//if we don't have a connection, we can't route for it anyway
 		if !connected {
 			continue
 		}
 
+		//create a container object (inspect and get handle)
 		c, err := newContainerFromID(dc.ID)
 		if err != nil {
 			log.Error(err)
 			continue
 		}
 
-		for _, es := range dc.NetworkSettings.Networks {
-			ip := net.ParseIP(es.IPAddress)
-			if ru.Dst.Contains(ip) {
-				switch ru.Type {
-				case syscall.RTM_NEWROUTE:
-					go c.addAllRoutes()
-					break Containers
-				case syscall.RTM_DELROUTE:
-					networkDisconnectWG.Add(1)
-					defer networkDisconnectWG.Done()
-					go func() {
-						c.delRoutesVia(ru.Dst)
-
-						if _, err := c.getPathIP(); err == nil {
-							c.addAllRoutes()
-						}
-					}()
-					break Containers
-				default:
-					return fmt.Errorf("Unknown RouteUpdate.Type.")
-				}
-			}
+		if thisRoute {
+			go c.addAllRoutes()
+			continue Containers
 		}
 
-		if !coveredByStatic {
+		//This route is already covered by a static supernet
+		if coveredByStatic {
 			continue
 		}
 
-		switch ru.Type {
-		case syscall.RTM_NEWROUTE:
-			go c.addRoute(ru.Dst)
-		case syscall.RTM_DELROUTE:
-			go c.delRoutes(ru.Dst)
-		default:
-			return fmt.Errorf("Unknown RouteUpdate.Type.")
-		}
+		go c.addRoute(ru.Dst)
 	}
-	return nil
-}
-
-func (dr *distributedRouter) selfNetworkConnectEvent(drn *network) error {
-	drn.adminDown = false
-
-	return nil
-}
-
-func (dr *distributedRouter) selfNetworkDisconnectEvent(drn *network) error {
-	if aggressive {
-		drn.adminDown = true
-	}
-
 	return nil
 }
 
