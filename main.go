@@ -24,17 +24,26 @@ func main() {
 		Value: 0,
 		Usage: "",
 	}
+	var flagDRouterInstance = cli.StringFlag{
+		Name:  "drouter-instance",
+		Value: "drouter",
+		Usage: "String to tell this drouter instance which networks to connect to. (must match 'docker network create -o drouter=<instance>')",
+	}
 	var flagNoAggressive = cli.BoolFlag{
 		Name:  "no-aggressive",
 		Usage: "Set false to make drouter only connect to docker networks with local containers.",
 	}
-	var flagLocalShortcut = cli.BoolFlag{
-		Name:  "local-shortcut",
+	var flagHostShortcut = cli.BoolFlag{
+		Name:  "host-shortcut",
 		Usage: "Set true to insert routes in the host destined for docker networks pointing to drouter over a host<->drouter p2p link.",
 	}
-	var flagLocalGateway = cli.BoolFlag{
-		Name:  "local-gateway",
-		Usage: "Set true to insert a default route on drouter pointing to the host over the host<->drouter p2p link. (implies --local-shortcut)",
+	var flagContainerGateway = cli.BoolFlag{
+		Name:  "container-gateway",
+		Usage: "Set true to set the container gateway to drouter.",
+	}
+	var flagHostGateway = cli.BoolFlag{
+		Name:  "host-gateway",
+		Usage: "Set true to insert a default route on drouter pointing to the host over the host<->drouter p2p link. (implies --host-shortcut)",
 	}
 	var flagMasquerade = cli.BoolFlag{
 		Name:  "masquerade",
@@ -51,7 +60,7 @@ func main() {
 	}
 	var flagTransitNet = cli.StringFlag{
 		Name:  "transit-net",
-		Usage: "Set a transit network for drouter to always connect to. Network must have 'drouter' option set. If network has a gateway, and --local-gateway=false, drouter's default gateway will be through this network's gateway. (this option is required with --no-aggressive)",
+		Usage: "Set a transit network for drouter to always connect to. Network should have 'drouter' option set. If network has a gateway, and --host-gateway=false, drouter's default gateway will be through this network's gateway. (this option is required with --no-aggressive)",
 	}
 	app := cli.NewApp()
 	app.Name = "docker-drouter"
@@ -60,9 +69,11 @@ func main() {
 	app.Flags = []cli.Flag{
 		flagDebug,
 		flagIPOffset,
+		flagDRouterInstance,
 		flagNoAggressive,
-		flagLocalShortcut,
-		flagLocalGateway,
+		flagHostShortcut,
+		flagContainerGateway,
+		flagHostGateway,
 		flagMasquerade,
 		flagP2PNet,
 		flagStaticRoutes,
@@ -87,14 +98,15 @@ func Run(ctx *cli.Context) error {
 	}
 
 	opts := &drouter.DistributedRouterOptions{
-		IPOffset:      ctx.Int("ip-offset"),
-		Aggressive:    !ctx.Bool("no-aggressive"),
-		LocalShortcut: ctx.Bool("local-shortcut"),
-		LocalGateway:  ctx.Bool("local-gateway"),
-		Masquerade:    ctx.Bool("masquerade"),
-		P2PAddr:       ctx.String("p2p-net"),
-		StaticRoutes:  ctx.StringSlice("static-route"),
-		TransitNet:    ctx.String("transit-net"),
+		IPOffset:         ctx.Int("ip-offset"),
+		Aggressive:       !ctx.Bool("no-aggressive"),
+		HostShortcut:     ctx.Bool("host-shortcut"),
+		ContainerGateway: ctx.Bool("container-gateway"),
+		HostGateway:      ctx.Bool("host-gateway"),
+		Masquerade:       ctx.Bool("masquerade"),
+		P2PAddr:          ctx.String("p2p-net"),
+		StaticRoutes:     ctx.StringSlice("static-route"),
+		TransitNet:       ctx.String("transit-net"),
 	}
 
 	quit := make(chan struct{})
