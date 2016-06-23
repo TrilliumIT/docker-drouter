@@ -27,7 +27,7 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 
 	//check if drouter_veth0 already exists
 	host_link, err := hns.LinkByName("drouter_veth0")
-	if err == nil {
+	if err != nil {
 		//doesn't exist, create it
 		host_link_veth := &netlink.Veth{
 			LinkAttrs: netlink.LinkAttrs{Name: "drouter_veth0"},
