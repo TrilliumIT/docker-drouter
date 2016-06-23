@@ -231,7 +231,6 @@ func (c *container) connectEvent(drn *network) error {
 
 // called when we detect a container has disconnected from a drouter network
 func (c *container) disconnectEvent(drn *network) error {
-
 	for _, ic := range drn.IPAM.Config {
 		subnet, err := netlink.ParseIPNet(ic.Subnet)
 		if err != nil {
@@ -273,8 +272,11 @@ func (c *container) disconnectEvent(drn *network) error {
 		}
 	}
 
-	networkDisconnectWG.Add(len(drn.IPAM.Config))
-	go drn.disconnect()
+	select {
+	case _ = <-stopChan:
+	default:
+		go drn.disconnect()
+	}
 
 	return nil
 }

@@ -30,10 +30,9 @@ var (
 	selfContainerID string
 
 	//other globals
-	dockerClient        *dockerclient.Client
-	transitNetID        string
-	networkConnectWG    sync.WaitGroup
-	networkDisconnectWG sync.WaitGroup
+	dockerClient *dockerclient.Client
+	transitNetID string
+	stopChan     <-chan struct{}
 )
 
 //DistributedRouterOptions Options for our DistributedRouter instance
@@ -159,6 +158,7 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 
 //Run creates and runs a drouter instance
 func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
+	stopChan = shutdown
 	dr, err := newDistributedRouter(opts)
 	if err != nil {
 		return err
@@ -193,6 +193,7 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 					}
 
 					//learn the docker networks
+					var connectWG sync.WaitGroup
 					for _, dn := range dockerNets {
 						if dn.ID == transitNetID {
 							continue
@@ -206,14 +207,14 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 						}
 
 						if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-							networkConnectWG.Add(1)
+							connectWG.Add(1)
 							go func() {
-								defer networkConnectWG.Done()
+								defer connectWG.Done()
 								drn.connect()
 							}()
 						}
 					}
-					networkConnectWG.Wait()
+					connectWG.Wait()
 					//use timer instead of ticker to guarantee a 5 second delay from end to start
 					timer = time.NewTimer(5 * time.Second)
 				}
@@ -252,7 +253,7 @@ Main:
 				log.Error(err)
 			}
 		case r := <-routeEvent:
-			if r.Type == syscall.RTM_DELROUTE {
+			if r.Type != syscall.RTM_NEWROUTE {
 				break
 			}
 			err = dr.processRouteAddEvent(&r)
@@ -268,13 +269,17 @@ Main:
 
 	log.Info("Cleaning Up")
 
+	var disconnectWG sync.WaitGroup
 	//leave all connected networks
 	for _, drn := range dr.networks {
 		if !drn.isConnected() {
 			continue
 		}
-		networkDisconnectWG.Add(len(drn.IPAM.Config))
-		go drn.disconnect()
+		disconnectWG.Add(1)
+		go func(drn *network) {
+			defer disconnectWG.Done()
+			drn.disconnect()
+		}(drn)
 	}
 
 	//removing the p2p network cleans up the host routes automatically
@@ -288,7 +293,7 @@ Main:
 	disconnectWait := make(chan struct{})
 	go func() {
 		defer close(disconnectWait)
-		networkDisconnectWG.Wait()
+		disconnectWG.Wait()
 	}()
 
 Done:
