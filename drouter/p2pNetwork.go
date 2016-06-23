@@ -27,20 +27,23 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 
 	//check if drouter_veth0 already exists
 	host_link, err := hns.LinkByName("drouter_veth0")
+	if err == nil {
+		//exists already... delete
+		hns.LinkDel(host_link)
+	}
+	err = nil
+
+	host_link_veth := &netlink.Veth{
+		LinkAttrs: netlink.LinkAttrs{Name: "drouter_veth0"},
+		PeerName:  "drouter_veth1",
+	}
+	err = hns.LinkAdd(host_link_veth)
 	if err != nil {
-		//doesn't exist, create it
-		host_link_veth := &netlink.Veth{
-			LinkAttrs: netlink.LinkAttrs{Name: "drouter_veth0"},
-			PeerName:  "drouter_veth1",
-		}
-		err2 := hns.LinkAdd(host_link_veth)
-		if err2 != nil {
-			return nil, err2
-		}
-		host_link, err2 = hns.LinkByName("drouter_veth0")
-		if err2 != nil {
-			return nil, err2
-		}
+		return nil, err
+	}
+	host_link, err = hns.LinkByName("drouter_veth0")
+	if err != nil {
+		return nil, err
 	}
 
 	int_link, err := hns.LinkByName("drouter_veth1")
