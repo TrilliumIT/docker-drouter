@@ -32,6 +32,7 @@ var (
 	//other globals
 	dockerClient *dockerclient.Client
 	transitNetID string
+	connectWG    sync.WaitGroup
 	stopChan     <-chan struct{}
 )
 
@@ -193,7 +194,6 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 					}
 
 					//learn the docker networks
-					var connectWG sync.WaitGroup
 					for _, dn := range dockerNets {
 						if dn.ID == transitNetID {
 							continue
@@ -268,6 +268,7 @@ Main:
 	}
 
 	log.Info("Cleaning Up")
+	connectWG.Wait()
 
 	var disconnectWG sync.WaitGroup
 	//leave all connected networks

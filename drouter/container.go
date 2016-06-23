@@ -209,7 +209,11 @@ func (c *container) replaceGateway(gateway net.IP) error {
 // called during a network connect event
 func (c *container) connectEvent(drn *network) error {
 	if !drn.isConnected() {
-		drn.connect()
+		connectWG.Add(1)
+		go func() {
+			defer connectWG.Done()
+			drn.connect()
+		}()
 		//return now because the routeEvent will trigger routes to be installed in this container
 		return nil
 	}
