@@ -3,6 +3,7 @@ package drouter
 import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
+	"github.com/TrilliumIT/iputil"
 	dockertypes "github.com/docker/engine-api/types"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/net/context"
@@ -58,12 +59,12 @@ Subnets:
 			continue
 		}
 		if localShortcut {
-			if subnetEqualSubnet(r.Dst, networkID(p2p.network)) {
+			if iputil.SubnetEqualSubnet(r.Dst, iputil.NetworkID(p2p.network)) {
 				continue
 			}
 		}
 		for _, sr := range staticRoutes {
-			if subnetContainsSubnet(sr, r.Dst) {
+			if iputil.SubnetContainsSubnet(sr, r.Dst) {
 				log.Debugf("Skipping route %v covered by %v.", r.Dst, sr)
 				break Subnets
 			}
@@ -141,7 +142,7 @@ func (c *container) delRoutes(to, via *net.IPNet) {
 		if r.Dst == nil {
 			continue
 		}
-		if to != nil && !subnetContainsSubnet(to, r.Dst) {
+		if to != nil && !iputil.SubnetContainsSubnet(to, r.Dst) {
 			continue
 		}
 

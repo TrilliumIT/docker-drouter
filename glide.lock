@@ -1,15 +1,15 @@
-hash: 75bdf311a08de67538ba28da9c7fa7c5c9a7a9fdbe46ecac765c4a5943ec3f44
-updated: 2016-06-16T14:47:38.02671448-04:00
+hash: 6c29c386c11d85e910c87e9f0055573015ab48504716696bb667026c3b0fe8f2
+updated: 2016-06-23T18:42:45.411981537-04:00
 imports:
 - name: github.com/codegangsta/cli
-  version: 06a850dff5bf1a4104835699e31067cc8103fcf7
+  version: 4205e9c4ee9672a8df5bb4fe486a8aa07e1e4037
 - name: github.com/docker/distribution
-  version: edd7cb5249d0a45262b20bb58b838ecf4fb368bd
+  version: ffbe9b7c635082432c4adb0395b7426ed5081cff
   subpackages:
   - reference
   - digest
 - name: github.com/docker/engine-api
-  version: d4b1f372e3bfb0be0a7bf571ba290ef857affa8b
+  version: f90ecdb1e989f834dabbd91807e891094aa069fe
   subpackages:
   - client
   - types
@@ -37,17 +37,19 @@ imports:
 - name: github.com/llimllib/ipaddress
   version: 2154bde6c1739cd49c475abbcc82e3f4ff257e5e
 - name: github.com/Microsoft/go-winio
-  version: 4f1a71750d95a5a8a46c40a67ffbed8129c2f138
+  version: ce2922f643c8fd76b46cadc7f404a06282678b34
 - name: github.com/opencontainers/runc
-  version: 5dc3f3576efb5262bf582217e93f86c93944374d
+  version: 9b3a2f16345aa015ca286835f6f5eb67ea60aa4b
   subpackages:
   - libcontainer/user
 - name: github.com/Sirupsen/logrus
   version: f3cfb454f4c209e6668c95216c4744b8fddb2356
+- name: github.com/TrilliumIT/iputil
+  version: 63d127b88d3a155cea8b3d96028804235c9352fa
 - name: github.com/vdemeester/docker-events
-  version: 20e6d2db238723e68197a9e3c6c34c99a9893a9c
+  version: be74d4929ec1ad118df54349fda4b0cba60f849b
 - name: github.com/vishvananda/netlink
-  version: 293adec04146bfb07bf34f75921ebc9c1ee2cd74
+  version: 734d02c3e202f682c74b71314b2c61eec0170fd4
   subpackages:
   - nl
 - name: github.com/vishvananda/netns
