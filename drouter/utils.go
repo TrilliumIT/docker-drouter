@@ -32,6 +32,11 @@ func insertMasqRule() error {
 	return nil
 }
 
+func makeGlobalNet() (supernet *net.IPNet) {
+	_, supernet, _ = net.ParseCIDR("0.0.0.0/0")
+	return
+}
+
 func networkID(n *net.IPNet) *net.IPNet {
 	ip := n.IP.To4()
 	if ip == nil {

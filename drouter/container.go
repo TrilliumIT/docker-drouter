@@ -72,33 +72,33 @@ Subnets:
 	return nil
 }
 
-func (c *container) addRoute(prefix *net.IPNet) {
+func (c *container) addRoute(sn *net.IPNet) {
 	gateway, err := c.getPathIP()
 	if err != nil {
 		log.Error(err)
 		return
 	}
 
-	if (prefix.IP.To4() == nil) != (gateway.To4() == nil) {
+	if (sn.IP.To4() == nil) != (gateway.To4() == nil) {
 		// Dst is a different IP family
 		return
 	}
 
 	route := &netlink.Route{
-		Dst: prefix,
+		Dst: sn,
 		Gw:  gateway,
 	}
 
-	log.Infof("Adding route to %v via %v.", prefix, gateway)
+	log.Infof("Adding route to %v via %v.", sn, gateway)
 	err = c.handle.RouteAdd(route)
 	if err != nil {
 		if !strings.Contains(err.Error(), "file exists") {
 			log.Error(err)
 			return
 		}
-		routes, err2 := c.handle.RouteGet(prefix.IP)
+		routes, err2 := c.handle.RouteGet(sn.IP)
 		if err2 != nil {
-			log.Errorf("Failed to get container routes to: %v.", prefix.IP)
+			log.Errorf("Failed to get container routes to: %v.", sn.IP)
 			log.Error(err)
 			return
 		}
@@ -106,55 +106,18 @@ func (c *container) addRoute(prefix *net.IPNet) {
 			if r.Gw.Equal(gateway) || r.Gw == nil {
 				return
 			}
-			err := c.handle.RouteDel(&netlink.Route{Dst: prefix, Gw: r.Gw})
+			err := c.handle.RouteDel(&netlink.Route{Dst: sn, Gw: r.Gw})
 			if err != nil {
-				log.Errorf("Failed to delete route to %v via %v.", prefix, r.Gw)
+				log.Errorf("Failed to delete route to %v via %v.", sn, r.Gw)
 				log.Error(err)
 				return
 			}
 		}
-		c.addRoute(prefix)
+		c.addRoute(sn)
 	}
 }
 
-func (c *container) delRoutesVia(sn *net.IPNet) {
-	routes, err := c.getRoutes()
-	if err != nil {
-		log.Error("Failed to get container route table.")
-		log.Error(err)
-		return
-	}
-
-	//get all drouter ips
-	ips, err := netlink.AddrList(nil, netlink.FAMILY_V4)
-	if err != nil {
-		log.Error("Failed to get drouter ip addresses.")
-		log.Error(err)
-		return
-	}
-
-	for _, r := range routes {
-		if r.Dst == nil {
-			continue
-		}
-
-		for _, ipaddr := range ips {
-			if !r.Gw.Equal(ipaddr.IP) {
-				continue
-			}
-			if !sn.Contains(r.Gw) {
-				continue
-			}
-			err = c.handle.RouteDel(&r)
-			if err != nil {
-				log.Errorf("Failed to delete container route to %v via %v", r.Dst, r.Gw)
-				continue
-			}
-		}
-	}
-}
-
-func (c *container) delRoutes(prefix *net.IPNet) {
+func (c *container) delRoutes(to, via *net.IPNet) {
 	//get all container routes
 	routes, err := c.getRoutes()
 	if err != nil {
@@ -164,7 +127,7 @@ func (c *container) delRoutes(prefix *net.IPNet) {
 	}
 
 	//get all drouter ips
-	ips, err := netlink.AddrList(nil, netlink.FAMILY_V4)
+	ips, err := netlink.AddrList(nil, netlink.FAMILY_ALL)
 	if err != nil {
 		log.Error("Failed to get drouter ip addresses.")
 		log.Error(err)
@@ -175,12 +138,15 @@ func (c *container) delRoutes(prefix *net.IPNet) {
 		if r.Dst == nil {
 			continue
 		}
-		if !subnetContainsSubnet(prefix, r.Dst) {
+		if !subnetContainsSubnet(to, r.Dst) {
 			continue
 		}
 
 		for _, ipaddr := range ips {
 			if !r.Gw.Equal(ipaddr.IP) {
+				continue
+			}
+			if !via.Contains(r.Gw) {
 				continue
 			}
 			err := c.handle.RouteDel(&r)
@@ -270,7 +236,7 @@ func (c *container) disconnectEvent(drn *network) error {
 			log.Error(err)
 			continue
 		}
-		c.delRoutesVia(subnet)
+		c.delRoutes(makeGlobalNet(), subnet)
 	}
 
 	if _, err := c.getPathIP(); err == nil {
