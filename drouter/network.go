@@ -72,10 +72,25 @@ func (drn *network) connect() {
 func (drn *network) disconnect() {
 	log.Debugf("Disconnecting from network: %v", drn.Name)
 
-	//TODO: remove shortcut route to this network if localShortcut
-	//TODO: remove all of the routes from connected containers
-	//TODO: remove this route from all other containers
+	//first, loop through all subnets in this network
+	for _, ic := range drn.IPAM.Config {
+		_, sn, err := net.ParseCIDR(ic.Subnet)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
 
+		coveredByStatic := subnetCoveredByStatic(sn)
+
+		//remove host shortcut routes
+		if localShortcut && !coveredByStatic {
+			go p2p.delHostRoute(sn)
+		}
+
+		modifyRoute(nil, sn, DEL_ROUTE)
+	}
+
+	//finished route removal, disconnect
 	err := dockerClient.NetworkDisconnect(context.Background(), drn.ID, selfContainerID, true)
 	if err != nil {
 		log.Error(err)
@@ -155,12 +170,31 @@ func (drn *network) connectEvent() error {
 }
 
 func (drn *network) disconnectEvent() error {
-	if aggressive {
-		drn.adminDown = true
+	if !aggressive {
+		//do nothing on disconnect event if not aggressive mode
+		return nil
 	}
 
-	//TODO: delete all routes from containers on this network
-	//TODO: delete this route from all other containers
+	drn.adminDown = true
+	log.Debugf("Detected disconnect from network: %v", drn.Name)
+
+	//first, loop through all subnets in this network
+	for _, ic := range drn.IPAM.Config {
+		_, sn, err := net.ParseCIDR(ic.Subnet)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+
+		coveredByStatic := subnetCoveredByStatic(sn)
+
+		//remove host shortcut routes
+		if localShortcut && !coveredByStatic {
+			go p2p.delHostRoute(sn)
+		}
+
+		modifyRoute(nil, sn, DEL_ROUTE)
+	}
 
 	return nil
 }

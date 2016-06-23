@@ -24,16 +24,14 @@ var (
 	localShortcut   bool
 	localGateway    bool
 	masquerade      bool
-	p2p             p2pNetwork
+	p2p             *p2pNetwork
 	staticRoutes    []*net.IPNet
 	transitNetName  string
 	selfContainerID string
 
 	//other globals
-	hostNamespace       *netlink.Handle
 	dockerClient        *dockerclient.Client
 	transitNetID        string
-	hostUnderlay        *net.IPNet
 	networkConnectWG    sync.WaitGroup
 	networkDisconnectWG sync.WaitGroup
 )
@@ -45,7 +43,7 @@ type DistributedRouterOptions struct {
 	LocalShortcut bool
 	LocalGateway  bool
 	Masquerade    bool
-	P2pNet        string
+	P2PAddr       string
 	StaticRoutes  []string
 	TransitNet    string
 }
@@ -74,11 +72,6 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	}
 
 	transitNetName = options.TransitNet
-
-	hostNamespace, err = netlinkHandleFromPid(1)
-	if err != nil {
-		return &distributedRouter{}, fmt.Errorf("Failed to get the host's namespace.")
-	}
 
 	if !aggressive && len(transitNetName) == 0 {
 		return &distributedRouter{}, fmt.Errorf("Detected --no-aggressive, and --transit-net was not found.")
@@ -135,9 +128,11 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 
 	//initial setup
 	if localShortcut {
+		var err error
 		log.Debug("--local-shortcut detected, making P2P link.")
-		if err := makeP2PLink(options.P2pNet); err != nil {
-			log.Error("Failed to makeP2PLink().")
+		p2p, err = newP2PNetwork(options.P2PAddr)
+		if err != nil {
+			log.Error("Failed to create the point to point link.")
 			return nil, err
 		}
 
@@ -284,7 +279,7 @@ Main:
 
 	//removing the p2p network cleans up the host routes automatically
 	if localShortcut {
-		err := removeP2PLink()
+		err := p2p.remove()
 		if err != nil {
 			return err
 		}
@@ -381,9 +376,9 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, lear
 	if event.Actor.Attributes["container"] == selfContainerID {
 		switch event.Action {
 		case "connect":
-			return dr.selfNetworkConnectEvent(drn)
+			return drn.connectEvent()
 		case "disconnect":
-			return dr.selfNetworkDisconnectEvent(drn)
+			return drn.disconnectEvent()
 		default:
 			return nil
 		}
@@ -416,7 +411,7 @@ func (dr *distributedRouter) processRouteAddEvent(ru *netlink.RouteUpdate) error
 	}
 	if ru.Dst == nil {
 		//we manage default routes separately
-		//TODO: Add logic to fix default route since it should not change.
+		//TODO: Add logic to fix default route since it was changed by a drn.connect()
 		return nil
 	}
 	if ru.Dst.IP.IsLoopback() {
@@ -435,123 +430,14 @@ func (dr *distributedRouter) processRouteAddEvent(ru *netlink.RouteUpdate) error
 		return nil
 	}
 
-	coveredByStatic := false
-	for _, sr := range staticRoutes {
-		if subnetContainsSubnet(sr, ru.Dst) {
-			coveredByStatic = true
-		}
-	}
+	coveredByStatic := subnetCoveredByStatic(ru.Dst)
 
-	//do host routes
 	if localShortcut && !coveredByStatic {
-		route := &netlink.Route{
-			Gw:  p2p.selfIP,
-			Dst: ru.Dst,
-			Src: hostUnderlay.IP,
-		}
-		if (route.Dst.IP.To4() == nil) != (route.Gw.To4() == nil) {
-			// Dst is a different IP family
-			return nil
-		}
-
-		log.Debugf("Injecting shortcut route to %v via drouter into host routing table.", ru.Dst)
-		err := hostNamespace.RouteAdd(route)
-		if err != nil {
-			log.Error(err)
-		}
+		p2p.addHostRoute(ru.Dst)
 	}
 
-	//get drouter routing table
-	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
-	if err != nil {
-		log.Error("Failed to get drouter routing table.")
-		return err
-	}
+	modifyRoute(ru.Dst, nil, ADD_ROUTE)
 
-	//get local containers
-	dockerContainers, err := dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
-	if err != nil {
-		log.Error("Failed to get container list.")
-		return err
-	}
-
-	//do container routes
-Containers:
-	for _, dc := range dockerContainers {
-		if dc.HostConfig.NetworkMode == "host" {
-			continue
-		}
-		if dc.ID == selfContainerID {
-			continue
-		}
-		//skip containers we don't have a direct route/connection to
-		//Can't call network.isconnected because bug in containerlist doesn't
-		//return networkID
-		thisRoute := false
-		connected := false
-	Endpoints:
-		for _, es := range dc.NetworkSettings.Networks {
-			ip := net.ParseIP(es.IPAddress)
-			//Is the container in the network we just added?
-			if ru.Dst.Contains(ip) {
-				thisRoute = true
-				connected = true
-				break Endpoints
-			}
-
-			//Are we connected to a same subnet?
-
-			/*
-				TODO: deprecate in favor of the correct way
-				Fixed in docker 1.12.0 rc2
-				https://github.com/docker/docker/issues/23596
-
-				Correct:
-				if dr.networks[es.NetworkID].isConnected() {
-					connected = true
-					break
-				}
-
-				Workaround:
-				Instead, we have to loop through our routes
-				find one with no gateway (locally attached)
-				and see if this container ip is in it
-			*/
-			for _, r := range routes {
-				if r.Gw != nil {
-					continue
-				}
-				if r.Dst.Contains(ip) {
-					connected = true
-					continue Endpoints
-				}
-			}
-		}
-
-		//if we don't have a connection, we can't route for it anyway
-		if !connected {
-			continue
-		}
-
-		//create a container object (inspect and get handle)
-		c, err := newContainerFromID(dc.ID)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-
-		if thisRoute {
-			go c.addAllRoutes()
-			continue Containers
-		}
-
-		//This route is already covered by a static supernet
-		if coveredByStatic {
-			continue
-		}
-
-		go c.addRoute(ru.Dst)
-	}
 	return nil
 }
 
