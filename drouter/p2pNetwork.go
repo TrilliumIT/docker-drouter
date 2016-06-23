@@ -33,13 +33,13 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 			LinkAttrs: netlink.LinkAttrs{Name: "drouter_veth0"},
 			PeerName:  "drouter_veth1",
 		}
-		err = hns.LinkAdd(host_link_veth)
-		if err != nil {
-			return nil, err
+		err2 := hns.LinkAdd(host_link_veth)
+		if err2 != nil {
+			return nil, err2
 		}
-		host_link, err = hns.LinkByName("drouter_veth0")
-		if err != nil {
-			return nil, err
+		host_link, err2 = hns.LinkByName("drouter_veth0")
+		if err2 != nil {
+			return nil, err2
 		}
 	}
 
