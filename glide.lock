@@ -1,5 +1,5 @@
 hash: 6c29c386c11d85e910c87e9f0055573015ab48504716696bb667026c3b0fe8f2
-updated: 2016-06-23T18:42:45.411981537-04:00
+updated: 2016-06-24T00:23:34.640012718-04:00
 imports:
 - name: github.com/codegangsta/cli
   version: 4205e9c4ee9672a8df5bb4fe486a8aa07e1e4037
@@ -45,7 +45,7 @@ imports:
 - name: github.com/Sirupsen/logrus
   version: f3cfb454f4c209e6668c95216c4744b8fddb2356
 - name: github.com/TrilliumIT/iputil
-  version: 63d127b88d3a155cea8b3d96028804235c9352fa
+  version: bfe8f86b05dc24446e8577128bdc3e5c2bb5d5c8
 - name: github.com/vdemeester/docker-events
   version: be74d4929ec1ad118df54349fda4b0cba60f849b
 - name: github.com/vishvananda/netlink
