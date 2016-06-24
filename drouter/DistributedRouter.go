@@ -19,15 +19,16 @@ import (
 
 var (
 	//cli options
-	ipOffset        int
-	aggressive      bool
-	localShortcut   bool
-	localGateway    bool
-	masquerade      bool
-	p2p             *p2pNetwork
-	staticRoutes    []*net.IPNet
-	transitNetName  string
-	selfContainerID string
+	ipOffset         int
+	aggressive       bool
+	hostShortcut     bool
+	containerGateway bool
+	hostGateway      bool
+	masquerade       bool
+	p2p              *p2pNetwork
+	staticRoutes     []*net.IPNet
+	transitNetName   string
+	selfContainerID  string
 
 	//other globals
 	dockerClient *dockerclient.Client
@@ -38,14 +39,15 @@ var (
 
 //DistributedRouterOptions Options for our DistributedRouter instance
 type DistributedRouterOptions struct {
-	IPOffset      int
-	Aggressive    bool
-	LocalShortcut bool
-	LocalGateway  bool
-	Masquerade    bool
-	P2PAddr       string
-	StaticRoutes  []string
-	TransitNet    string
+	IPOffset         int
+	Aggressive       bool
+	HostShortcut     bool
+	ContainerGateway bool
+	HostGateway      bool
+	Masquerade       bool
+	P2PAddr          string
+	StaticRoutes     []string
+	TransitNet       string
 }
 
 type distributedRouter struct {
@@ -58,8 +60,9 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	//set global vars from options
 	ipOffset = options.IPOffset
 	aggressive = options.Aggressive
-	localShortcut = options.LocalShortcut
-	localGateway = options.LocalGateway
+	hostShortcut = options.HostShortcut
+	containerGateway = options.ContainerGateway
+	hostGateway = options.HostGateway
 	masquerade = options.Masquerade
 	//staticRoutes
 	for _, sr := range options.StaticRoutes {
@@ -93,13 +96,14 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 
 	//process options for assumptions and validity
 	if masquerade {
-		log.Debug("Detected --masquerade. Assuming --local-gateway and --local-shortcut.")
-		localShortcut = true
-		localGateway = true
+		log.Debug("Detected --masquerade. Assuming --host-gateway and --container-gateway and --host-shortcut.")
+		hostShortcut = true
+		containerGateway = true
+		hostGateway = true
 	} else {
-		if localGateway {
-			log.Debug("Detected --local-gateway. Assuming --local-shortcut.")
-			localShortcut = true
+		if hostGateway {
+			log.Debug("Detected --host-gateway. Assuming --host-shortcut.")
+			hostShortcut = true
 		}
 	}
 
@@ -127,20 +131,20 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	}
 
 	//initial setup
-	if localShortcut {
+	if hostShortcut {
 		var err error
-		log.Debug("--local-shortcut detected, making P2P link.")
+		log.Debug("--host-shortcut detected, making P2P link.")
 		p2p, err = newP2PNetwork(options.P2PAddr)
 		if err != nil {
 			log.Error("Failed to create the point to point link.")
 			return nil, err
 		}
 
-		if localGateway {
+		if hostGateway {
 			dr.defaultRoute = p2p.hostIP
 			err = dr.setDefaultRoute()
 			if err != nil {
-				log.Error("--local-gateway=true and unable to set default route to host's p2p address.")
+				log.Error("--host-gateway=true and unable to set default route to host's p2p address.")
 				return nil, err
 			}
 			if masquerade {
@@ -299,7 +303,7 @@ Done:
 	}
 
 	//delete the p2p link
-	if localShortcut {
+	if hostShortcut {
 		err := p2p.remove()
 		if err != nil {
 			return err
@@ -439,7 +443,7 @@ func (dr *distributedRouter) processRouteAddEvent(ru *netlink.RouteUpdate) error
 
 	coveredByStatic := subnetCoveredByStatic(ru.Dst)
 
-	if localShortcut && !coveredByStatic {
+	if hostShortcut && !coveredByStatic {
 		p2p.addHostRoute(ru.Dst)
 	}
 
@@ -460,7 +464,7 @@ func (dr *distributedRouter) initTransitNet() error {
 	transitNetID = nr.ID
 
 	//if transit net has a gateway, make it drouter's default route
-	if len(nr.Options["gateway"]) > 0 && !localGateway {
+	if len(nr.Options["gateway"]) > 0 && !hostGateway {
 		dr.defaultRoute = net.ParseIP(nr.Options["gateway"])
 		log.Debugf("Gateway option detected on transit net as: %v", dr.defaultRoute)
 	}

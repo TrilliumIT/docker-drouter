@@ -58,7 +58,7 @@ Subnets:
 		if r.Gw != nil {
 			continue
 		}
-		if localShortcut {
+		if hostShortcut {
 			if iputil.SubnetEqualSubnet(r.Dst, iputil.NetworkID(p2p.network)) {
 				continue
 			}
@@ -210,6 +210,7 @@ func (c *container) replaceGateway(gateway net.IP) error {
 // called during a network connect event
 func (c *container) connectEvent(drn *network) error {
 	if !drn.isConnected() {
+		//connect drouter to the network that the container just connected to
 		connectWG.Add(1)
 		go func() {
 			defer connectWG.Done()
@@ -226,7 +227,7 @@ func (c *container) connectEvent(drn *network) error {
 		return err
 	}
 
-	if localGateway {
+	if containerGateway {
 		go c.replaceGateway(gateway)
 		return nil
 	}
