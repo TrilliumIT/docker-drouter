@@ -11,7 +11,6 @@ import (
 	dockernetworks "github.com/docker/engine-api/types/network"
 	"github.com/llimllib/ipaddress"
 	"github.com/vishvananda/netlink"
-	"github.com/ziutek/utils/netaddr"
 	"golang.org/x/net/context"
 )
 
@@ -39,10 +38,10 @@ func (drn *network) connect() {
 			}
 			log.Debugf("Adding subnet %v", subnet)
 			if ipOffset > 0 {
-				ip = netaddr.IPAdd(subnet.IP, ipOffset)
+				ip = iputil.IPAdd(subnet.IP, ipOffset)
 			} else {
 				last := ipaddress.LastAddress(subnet)
-				ip = netaddr.IPAdd(last, ipOffset)
+				ip = iputil.IPAdd(last, ipOffset)
 			}
 			if endpointSettings.IPAddress == "" {
 				endpointSettings.IPAddress = ip.String()
