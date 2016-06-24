@@ -84,7 +84,7 @@ func (drn *network) disconnect() {
 		coveredByStatic := subnetCoveredByStatic(sn)
 
 		//remove host shortcut routes
-		if localShortcut && !coveredByStatic {
+		if hostShortcut && !coveredByStatic {
 			go p2p.delHostRoute(sn)
 		}
 
@@ -190,7 +190,7 @@ func (drn *network) disconnectEvent() error {
 		coveredByStatic := subnetCoveredByStatic(sn)
 
 		//remove host shortcut routes
-		if localShortcut && !coveredByStatic {
+		if hostShortcut && !coveredByStatic {
 			go p2p.delHostRoute(sn)
 		}
 

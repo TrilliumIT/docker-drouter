@@ -152,8 +152,8 @@ func modifyRoute(to, via *net.IPNet, action bool) error {
 			continue
 		}
 
-		//This route is already covered by a static supernet or localGateway
-		if localGateway || coveredByStatic {
+		//This route is already covered by a static supernet or containerGateway
+		if containerGateway || coveredByStatic {
 			continue
 		}
 
