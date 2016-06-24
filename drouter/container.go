@@ -2,13 +2,18 @@ package drouter
 
 import (
 	"fmt"
+	"net"
+	"strings"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/TrilliumIT/iputil"
 	dockertypes "github.com/docker/engine-api/types"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/net/context"
-	"net"
-	"strings"
+)
+
+const (
+	GATEWAY_OFFSET = 100
 )
 
 type container struct {
@@ -18,7 +23,7 @@ type container struct {
 func newContainerFromID(id string) (*container, error) {
 	cjson, err := dockerClient.ContainerInspect(context.Background(), id)
 	if err != nil {
-		log.Error("Failed to inspect container with id: %v", id)
+		log.Errorf("Failed to inspect container with id: %v", id)
 		return nil, err
 	}
 	log.Debugf("Inspected container: %v", cjson.Name)
@@ -37,6 +42,11 @@ func newContainerFromID(id string) (*container, error) {
 
 //adds all known routes for provided container
 func (c *container) addAllRoutes() error {
+	if containerGateway {
+		c.replaceGateway()
+		return nil
+	}
+
 	//Loop through all static routes, ensure each one is installed in the container
 	log.Info("Syncing static routes.")
 	//add routes for all the static routes
@@ -82,8 +92,11 @@ func (c *container) addRoute(sn *net.IPNet) {
 		log.Error(err)
 		return
 	}
+	c.addRouteVia(sn, gateway)
+}
 
-	if (sn.IP.To4() == nil) != (gateway.To4() == nil) {
+func (c *container) addRouteVia(sn *net.IPNet, gateway net.IP) {
+	if sn != nil && (sn.IP.To4() == nil) != (gateway.To4() == nil) {
 		// Dst is a different IP family
 		return
 	}
@@ -94,7 +107,7 @@ func (c *container) addRoute(sn *net.IPNet) {
 	}
 
 	log.Infof("Adding route to %v via %v.", sn, gateway)
-	err = c.handle.RouteAdd(route)
+	err := c.handle.RouteAdd(route)
 	if err != nil {
 		if !strings.Contains(err.Error(), "file exists") {
 			log.Error(err)
@@ -121,7 +134,11 @@ func (c *container) addRoute(sn *net.IPNet) {
 	}
 }
 
-func (c *container) delRoutes(to, via *net.IPNet) {
+func (c *container) delRoutes(to *net.IPNet) {
+	c.delRoutesVia(to, nil)
+}
+
+func (c *container) delRoutesVia(to, via *net.IPNet) {
 	//get all container routes
 	routes, err := c.getRoutes()
 	if err != nil {
@@ -138,11 +155,22 @@ func (c *container) delRoutes(to, via *net.IPNet) {
 		return
 	}
 
-	for _, r := range routes {
-		if r.Dst == nil {
-			continue
+	gws, err := c.getPathIPs()
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	var altgw net.IP = nil
+	for _, gw := range gws {
+		if via != nil && !via.Contains(gw) {
+			altgw = gw
+			break
 		}
-		if to != nil && !iputil.SubnetContainsSubnet(to, r.Dst) {
+	}
+
+	for _, r := range routes {
+		if r.Dst != nil && to != nil && !iputil.SubnetContainsSubnet(to, r.Dst) {
 			continue
 		}
 
@@ -158,51 +186,40 @@ func (c *container) delRoutes(to, via *net.IPNet) {
 				log.Errorf("Failed to delete container route to %v via %v", r.Dst, r.Gw)
 				continue
 			}
+			if altgw == nil && r.Dst == nil {
+				c.offsetGateways(GATEWAY_OFFSET * -1)
+			}
+			if altgw != nil {
+				c.addRouteVia(r.Dst, altgw)
+			}
 		}
 	}
 }
 
+//sets the provided gateway's container to a connected drouter address
+func (c *container) replaceGateway() error {
+	gateway, err := c.getPathIP()
+	if err != nil {
+		log.Error("Failed to get path IP when replacing the gateway.")
+		return err
+	}
+	return c.setGatewayTo(gateway)
+}
+
 //sets the provided container's default route to the provided gateway
-func (c *container) replaceGateway(gateway net.IP) error {
-	log.Debugf("container.replaceGateway(%v)", gateway)
-
-	var defr *netlink.Route
-	//replace containers default gateway with drouter
-	routes, err := c.getRoutes()
-	if err != nil {
-		return err
-	}
-	log.Debugf("container routes: %v", routes)
-	for _, r := range routes {
-		if r.Dst != nil {
-			// Not the container gateway
-			continue
-		}
-
-		defr = &r
-	}
-
-	//bail if the container gateway is already set to gateway
-	if gateway.Equal(defr.Gw) {
-		return nil
-	}
-
-	log.Debugf("Remove existing default route: %v", defr)
-	err = c.handle.RouteDel(defr)
-	if err != nil {
-		return err
-	}
+func (c *container) setGatewayTo(gateway net.IP) error {
+	c.offsetGateways(GATEWAY_OFFSET)
 
 	if gateway == nil || gateway.Equal(net.IP{}) {
 		return nil
 	}
 
-	defr.Gw = gateway
-	err = c.handle.RouteAdd(defr)
+	route := &netlink.Route{Dst: nil, Gw: gateway}
+	err := c.handle.RouteAdd(route)
 	if err != nil {
 		return err
 	}
-	log.Debugf("Default route changed to: %v", defr)
+	log.Info("Default route changed to: %v", route)
 
 	return nil
 }
@@ -221,14 +238,8 @@ func (c *container) connectEvent(drn *network) error {
 	}
 
 	//let's push our routes into this new container
-	gateway, err := c.getPathIP()
-	if err != nil {
-		log.Error("Failed to get container path IP.")
-		return err
-	}
-
 	if containerGateway {
-		go c.replaceGateway(gateway)
+		go c.replaceGateway()
 		return nil
 	}
 
@@ -238,7 +249,7 @@ func (c *container) connectEvent(drn *network) error {
 			log.Error(err)
 			continue
 		}
-		c.delRoutes(subnet, nil)
+		c.delRoutes(subnet)
 	}
 
 	go c.addAllRoutes()
@@ -254,7 +265,7 @@ func (c *container) disconnectEvent(drn *network) error {
 			log.Error(err)
 			continue
 		}
-		c.delRoutes(nil, subnet)
+		c.delRoutesVia(nil, subnet)
 	}
 
 	if _, err := c.getPathIP(); err == nil {
@@ -299,7 +310,7 @@ func (c *container) disconnectEvent(drn *network) error {
 }
 
 //returns a drouter IP that is on some same network as provided container
-func (c *container) getPathIP() (net.IP, error) {
+func (c *container) getPathIPs() (ips []net.IP, err error) {
 	if c.handle == nil {
 		return nil, fmt.Errorf("No namespace handle for container, is it running?")
 	}
@@ -323,12 +334,25 @@ func (c *container) getPathIP() (net.IP, error) {
 		}
 		for _, srcRoute := range srcRoutes {
 			if srcRoute.Gw == nil {
-				return srcRoute.Src, nil
+				ips = append(ips, srcRoute.Src)
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("No direct connection to container.")
+	return
+}
+
+func (c *container) getPathIP() (net.IP, error) {
+	ips, err := c.getPathIPs()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("No direct connection to container.")
+	}
+
+	return ips[0], nil
 }
 
 func (c *container) getRoutes() ([]netlink.Route, error) {
@@ -337,4 +361,36 @@ func (c *container) getRoutes() ([]netlink.Route, error) {
 	}
 
 	return make([]netlink.Route, 0), nil
+}
+
+func (c *container) offsetGateways(offset int) error {
+	routes, err := c.getRoutes()
+	if err != nil {
+		return err
+	}
+
+	for _, r := range routes {
+		if r.Dst != nil {
+			// Not the container gateway
+			continue
+		}
+
+		log.Debugf("Remove existing default route: %v", r)
+		err := c.handle.RouteDel(&r)
+		if err != nil {
+			return err
+		}
+
+		if r.Priority+offset < 0 {
+			r.Priority = 0
+		} else {
+			r.Priority += offset
+		}
+
+		err = c.handle.RouteAdd(&r)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

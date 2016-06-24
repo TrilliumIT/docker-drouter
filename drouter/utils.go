@@ -147,7 +147,7 @@ func modifyRoute(to, via *net.IPNet, action bool) error {
 			case ADD_ROUTE:
 				go c.addAllRoutes()
 			case DEL_ROUTE:
-				go c.delRoutes(to, via)
+				go c.delRoutesVia(to, via)
 			}
 			continue
 		}
@@ -173,7 +173,7 @@ func modifyRoute(to, via *net.IPNet, action bool) error {
 		case ADD_ROUTE:
 			go c.addRoute(to)
 		case DEL_ROUTE:
-			go c.delRoutes(to, via)
+			go c.delRoutesVia(to, via)
 		}
 	}
 	return nil
