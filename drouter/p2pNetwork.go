@@ -7,7 +7,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/TrilliumIT/iputil"
 	"github.com/vishvananda/netlink"
-	"github.com/ziutek/utils/netaddr"
 )
 
 type p2pNetwork struct {
@@ -68,7 +67,7 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 	}
 
 	host_addr := *p2pIPNet
-	host_addr.IP = netaddr.IPAdd(host_addr.IP, 1)
+	host_addr.IP = iputil.IPAdd(host_addr.IP, 1)
 	host_netlink_addr := &netlink.Addr{
 		IPNet: &host_addr,
 		Label: "",
@@ -79,7 +78,7 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 	}
 
 	int_addr := *p2pIPNet
-	int_addr.IP = netaddr.IPAdd(int_addr.IP, 2)
+	int_addr.IP = iputil.IPAdd(int_addr.IP, 2)
 	int_netlink_addr := &netlink.Addr{
 		IPNet: &int_addr,
 		Label: "",

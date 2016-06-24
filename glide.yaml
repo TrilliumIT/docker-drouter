@@ -13,7 +13,6 @@ import:
 - package: github.com/vdemeester/docker-events
 - package: github.com/vishvananda/netlink
 - package: github.com/vishvananda/netns
-- package: github.com/ziutek/utils
   subpackages:
   - netaddr
 - package: golang.org/x/net

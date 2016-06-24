@@ -1,5 +1,5 @@
-hash: 6c29c386c11d85e910c87e9f0055573015ab48504716696bb667026c3b0fe8f2
-updated: 2016-06-24T00:23:34.640012718-04:00
+hash: 7e1b7131baa5bf3fb16d3f1cf6a651c4788d907d79f3e729e8cf52ed8ed6a38a
+updated: 2016-06-24T00:26:41.855297963-04:00
 imports:
 - name: github.com/codegangsta/cli
   version: 4205e9c4ee9672a8df5bb4fe486a8aa07e1e4037
@@ -54,8 +54,6 @@ imports:
   - nl
 - name: github.com/vishvananda/netns
   version: 8ba1072b58e0c2a240eb5f6120165c7776c3e7b8
-- name: github.com/ziutek/utils
-  version: d8fe304b0db2bae8e6709e46d19b355926c9f7fc
   subpackages:
   - netaddr
 - name: golang.org/x/net
