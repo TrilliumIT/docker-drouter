@@ -37,9 +37,20 @@ func TestRunClose(t *testing.T) {
 		ech <- Run(opts, quit)
 	}()
 
-	time.Sleep(20 * time.Second)
+	timeoutCh := make(chan struct{})
+	go func() {
+		time.Sleep(20 * time.Second)
+		close(timeoutCh)
+	}()
 
-	err := <-ech
+	var err error
+	select {
+	case _ = <-timeoutCh:
+		close(quit)
+		err = <-ech
+	case err = <-ech:
+	}
+
 	if err != nil {
 		t.Errorf("Error on Run Return: %v", err)
 	}
