@@ -2,6 +2,7 @@ package drouter
 
 import (
 	dockerclient "github.com/docker/engine-api/client"
+	"golang.org/x/net/context"
 	"os"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 var (
 	dc *dockerclient.Client
+	bg context.Context
 )
 
 func TestMain(m *testing.M) {
@@ -24,6 +26,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		return
 	}
+	bg = context.Background()
 
 	exitStatus = m.Run()
 }
@@ -59,42 +62,85 @@ func TestRunClose(t *testing.T) {
 	}
 }
 
+func createNetwork(n int) {
+	name := fmt.Stringf("n%v", n)
+	dc.NetworkCreate(bg, name, dockertypes.NetworkCreate{
+		Options: make(map[string]string{"drouter": "true"}),
+		IPAM: dockerNetworkTypes.IPAM{
+			Config: []dockerNetworkTypes.IPAMConfig{
+				dockerNetworkTypes.IPAMConfig{
+					Subnet:  fmt.Stringf("192.168.242.%v/29", n*8),
+					Gateway: fmt.Stringf("192.168.242.%v/29", n*8+1),
+				},
+			},
+		},
+	})
+}
+
+var n []*network
+var c []*container
+
+func newNetwork()
+
 func newContainer() (*container, error) {
 }
 
 /*
-every mode needs to do the following:
-n1 := non drouter network
+// startup & shutdown tests
+n0 := non drouter network
+c0 := container on n0
+n1 := drouter network
 c1 := container on n1
 n2 := drouter network
-c2 := container on c2
+c2 := drouter network on n2
 n3 := drouter network
-c3 := drouter network on n3
-c23 := container on network n2 and n3
-n4 := drouter network
 
 start drouter
 
-//test networks:
--not connected to n1
--connected to n2
--connected to n3
-if aggressive:
-	-connected to n4
-else:
-	-not connected to n4
+docker events expected:
+	- self connect to n1
+	- self connect to n2
+	if aggresive:
+		- self connect to n3
 
-// test containers:
--c1 routes unchanged
-if !containerGateway:
-	-c2 contains route to n3
-	-c3 contains route to n2
-	-c23 routes unchanged
-else:
-	-c2 gateway changed
-	-c3 gateway changed
-	-c23 gateway is one of the correct options
+route events expected:
+	- self direct to n1
+	- self direct to n2
+	if aggressive:
+		- self direct to n3
+	if containergateway:
+		- gateway change on c1
+		- gateway change on c2
+	if !containergateway:
+		- c1 to n2 via self-n1 - after direct to n1
+		- c2 to n1 via self-n2 - after direct to n2
+		if aggressive:
+			- c1 to n3 via self-n1 - after direct to n3
+			- c2 to n3 via self-n2 - after direct to n3
+
+stop drouter
+
+docker events expected:
+	- self disconnect from n1
+	- self disconnect from n2
+	if aggressive:
+		- self disconnect from n3
+
+route events expected:
+	// remember we don't see route loss on interface down
+	if containergateway:
+		- gateway change to orig on c1
+		- gateway change to orig on c2
+	if !containergateway:
+		- lose c1 to n2 - before self disconnect on n2
+		- lose c2 to n1 - before self disconnect on n1
+		if aggressive:
+			- lose c1 to n3 - before self disconnect on n3
+			- lose c2 to n3 - before self disconnect on n3
+
+// multi-connected tests
 
 
+// multi-subnet on dockernet test
 
 */
