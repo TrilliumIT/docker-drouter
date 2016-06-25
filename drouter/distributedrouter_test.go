@@ -28,8 +28,11 @@ func TestMain(m *testing.M) {
 	exitStatus = m.Run()
 }
 
+// A most basic test to make sure it doesn't die on start
 func TestRunClose(t *testing.T) {
-	opts := &DistributedRouterOptions{}
+	opts := &DistributedRouterOptions{
+		Aggressive: true,
+	}
 
 	quit := make(chan struct{})
 	ech := make(chan error)
@@ -39,7 +42,7 @@ func TestRunClose(t *testing.T) {
 
 	timeoutCh := make(chan struct{})
 	go func() {
-		time.Sleep(20 * time.Second)
+		time.Sleep(10 * time.Second)
 		close(timeoutCh)
 	}()
 
@@ -55,3 +58,43 @@ func TestRunClose(t *testing.T) {
 		t.Errorf("Error on Run Return: %v", err)
 	}
 }
+
+func newContainer() (*container, error) {
+}
+
+/*
+every mode needs to do the following:
+n1 := non drouter network
+c1 := container on n1
+n2 := drouter network
+c2 := container on c2
+n3 := drouter network
+c3 := drouter network on n3
+c23 := container on network n2 and n3
+n4 := drouter network
+
+start drouter
+
+//test networks:
+-not connected to n1
+-connected to n2
+-connected to n3
+if aggressive:
+	-connected to n4
+else:
+	-not connected to n4
+
+// test containers:
+-c1 routes unchanged
+if !containerGateway:
+	-c2 contains route to n3
+	-c3 contains route to n2
+	-c23 routes unchanged
+else:
+	-c2 gateway changed
+	-c3 gateway changed
+	-c23 gateway is one of the correct options
+
+
+
+*/
