@@ -1,14 +1,16 @@
 package drouter
 
 import (
-	dockerclient "github.com/docker/engine-api/client"
-	"golang.org/x/net/context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
-	//dockertypes "github.com/docker/engine-api/types"
-	//dockerevents "github.com/docker/engine-api/types/events"
-	//dockerfilters "github.com/docker/engine-api/types/filters"
+
+	dockerclient "github.com/docker/engine-api/client"
+	dockerTypes "github.com/docker/engine-api/types"
+	dockerCTypes "github.com/docker/engine-api/types/container"
+	dockerNTypes "github.com/docker/engine-api/types/network"
+	"golang.org/x/net/context"
 )
 
 var (
@@ -62,27 +64,75 @@ func TestRunClose(t *testing.T) {
 	}
 }
 
-func createNetwork(n int) {
-	name := fmt.Stringf("n%v", n)
-	dc.NetworkCreate(bg, name, dockertypes.NetworkCreate{
-		Options: make(map[string]string{"drouter": "true"}),
-		IPAM: dockerNetworkTypes.IPAM{
-			Config: []dockerNetworkTypes.IPAMConfig{
-				dockerNetworkTypes.IPAMConfig{
-					Subnet:  fmt.Stringf("192.168.242.%v/29", n*8),
-					Gateway: fmt.Stringf("192.168.242.%v/29", n*8+1),
+const (
+	NET_NAME  = "drntest_n%v"
+	NET_IPNET = "192.168.242.%v/29"
+	DR_INST   = "dr_test"
+)
+
+func createNetwork(n int, dr bool, t *testing.T) string {
+	name := fmt.Sprintf(NET_NAME, n)
+	opts := make(map[string]string)
+	if dr {
+		opts["drouter"] = DR_INST
+	}
+	r, err := dc.NetworkCreate(bg, name, dockerTypes.NetworkCreate{
+		Options: opts,
+		IPAM: dockerNTypes.IPAM{
+			Config: []dockerNTypes.IPAMConfig{
+				dockerNTypes.IPAMConfig{
+					Subnet:  fmt.Sprintf(NET_IPNET, n*8),
+					Gateway: fmt.Sprintf(NET_IPNET, n*8+1),
 				},
 			},
 		},
 	})
+	if err != nil {
+		t.Fatalf("Error creating network: %v", err)
+	}
+	return r.ID
 }
 
-var n []*network
-var c []*container
+func removeNetwork(id string, t *testing.T) {
+	err := dc.NetworkRemove(bg, id)
+	if err != nil {
+		t.Fatalf("Error removing network: %v", err)
+	}
+}
 
-func newNetwork()
+const (
+	CONT_NAME  = "drntest_c%v"
+	CONT_IMAGE = "alpine"
+)
 
-func newContainer() (*container, error) {
+func createContainer(n int, t *testing.T) string {
+	r, err := dc.ContainerCreate(bg,
+		&dockerCTypes.Config{},
+		&dockerCTypes.HostConfig{},
+		&dockerNTypes.NetworkingConfig{
+			EndpointsConfig: map[string]*dockerNTypes.EndpointSettings{
+				fmt.Sprintf(NET_NAME, n): &dockerNTypes.EndpointSettings{},
+			},
+		}, "")
+	if err != nil {
+		t.Fatalf("Error creating container: %v", err)
+	}
+
+	err = dc.ContainerStart(bg, r.ID, dockerTypes.ContainerStartOptions{})
+
+	if err != nil {
+		containerRemove(r.ID, t)
+		t.Fatalf("Error starting container: %v", err)
+	}
+
+	return r.ID
+}
+
+func containerRemove(id string, t *testing.T) {
+	err := dc.ContainerRemove(bg, id, dockerTypes.ContainerRemoveOptions{})
+	if err != nil {
+		t.Fatalf("Error removing container: %v", err)
+	}
 }
 
 /*
