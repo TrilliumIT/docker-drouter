@@ -26,13 +26,23 @@ func logError(msg string, err error) {
 }
 
 func netlinkHandleFromPid(pid int) (*netlink.Handle, error) {
-	log.Debugf("Getting NsHandle for pid: %v", pid)
+	log.WithFields(log.Fields{
+		"Pid": pid,
+	}).Debug("Getting NsHandle for pid")
 	ns, err := netns.GetFromPid(pid)
 	if err != nil {
+		log.WithFields(log.Fields{
+			"Pid":   pid,
+			"Error": err,
+		}).Error("Faild to get namespace for pid")
 		return &netlink.Handle{}, err
 	}
 	nsh, err := netlink.NewHandleAt(ns)
 	if err != nil {
+		log.WithFields(log.Fields{
+			"Pid":   pid,
+			"Error": err,
+		}).Error("Faild to get handle for namespace at pid")
 		return &netlink.Handle{}, err
 	}
 
@@ -40,6 +50,7 @@ func netlinkHandleFromPid(pid int) (*netlink.Handle, error) {
 }
 
 func insertMasqRule() error {
+	log.Debug("Insert mask rule")
 	//not implemented yet
 	return nil
 }
@@ -60,12 +71,17 @@ func getSelfContainer() (*dockertypes.ContainerJSON, error) {
 		id := line[len(line)-1]
 		containerInfo, err := dockerClient.ContainerInspect(context.Background(), id)
 		if err != nil {
-			log.Errorf("Error inspecting container: %v", id)
+			log.WithFields(log.Fields{
+				"ID":    id,
+				"Error": err,
+			}).Error("Failed to inspect container")
 			return nil, err
 		}
 		return &containerInfo, nil
 	}
-	return nil, fmt.Errorf("Container not found")
+	err = fmt.Errorf("Container not found")
+	logError("Failed to get self container", err)
+	return nil, err
 }
 
 func subnetCoveredByStatic(subnet *net.IPNet) bool {
@@ -93,8 +109,7 @@ func dockerContainerSharesNetwork(dc *dockertypes.Container) bool {
 	//get drouter routing table
 	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
 	if err != nil {
-		log.Error("Failed to get drouter routing table.")
-		log.Error(err)
+		logError("Failed to get drouter routing table", err)
 		return false
 	}
 
@@ -126,7 +141,7 @@ func modifyRoute(to, via *net.IPNet, action bool) error {
 	//get local containers
 	dockerContainers, err := dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
 	if err != nil {
-		log.Error("Failed to get container list.")
+		logError("Failed to get container list.", err)
 		return err
 	}
 
@@ -148,7 +163,10 @@ func modifyRoute(to, via *net.IPNet, action bool) error {
 				//create a container object (inspect and get handle)
 				c, err := newContainerFromID(dc.ID)
 				if err != nil {
-					log.Error(err)
+					log.WithFields(log.Fields{
+						"ID":    dc.ID,
+						"Error": err,
+					}).Error("Failed to get container object.")
 					return
 				}
 
@@ -174,7 +192,10 @@ func modifyRoute(to, via *net.IPNet, action bool) error {
 			//create a container object (inspect and get handle)
 			c, err := newContainerFromID(dc.ID)
 			if err != nil {
-				log.Error(err)
+				log.WithFields(log.Fields{
+					"ID":    dc.ID,
+					"Error": err,
+				}).Error("Failed to get container object.")
 				return
 			}
 
