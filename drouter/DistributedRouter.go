@@ -68,7 +68,10 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	for _, sr := range options.StaticRoutes {
 		_, cidr, err := net.ParseCIDR(sr)
 		if err != nil {
-			log.Errorf("Failed to parse static route: %v", sr)
+			log.WithFields(log.Fields{
+				"Subnet": sr,
+				"Error":  err,
+			}).Error("Failed to parse static route subnet.")
 			continue
 		}
 		staticRoutes = append(staticRoutes, cidr)
@@ -90,7 +93,7 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
 	dockerClient, err = dockerclient.NewClient("unix:///var/run/docker.sock", "v1.23", nil, defaultHeaders)
 	if err != nil {
-		log.Error("Error connecting to docker socket")
+		logError("Error connecting to docker socket", err)
 		return &distributedRouter{}, err
 	}
 
@@ -117,10 +120,15 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	//disconnect from all initial networks
 	log.Debug("Leaving all connected currently networks.")
 	for name, settings := range sc.NetworkSettings.Networks {
-		log.Debugf("Leaving network: %v", name)
+		log.WithFields(log.Fields{
+			"Network": name,
+		}).Debug("Leaving network.")
 		err = dockerClient.NetworkDisconnect(context.Background(), settings.NetworkID, selfContainerID, true)
 		if err != nil {
-			log.Error(err)
+			log.WithFields(log.Fields{
+				"Network": name,
+				"Error":   err,
+			}).Error("Failed to leave network.")
 			continue
 		}
 	}
@@ -193,8 +201,7 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 					//get all networks from docker
 					dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
 					if err != nil {
-						log.Error("Error getting network list")
-						log.Error(err)
+						logError("Error getting network list", err)
 					}
 
 					//learn the docker networks
@@ -239,7 +246,7 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 	defer close(routeEvent)
 	err = netlink.RouteSubscribe(routeEvent, routeEventDone)
 	if err != nil {
-		log.Error("Failed to subscribe to drouter routing table.")
+		logError("Failed to subscribe to drouter routing table.", err)
 		return err
 	}
 
@@ -254,7 +261,10 @@ Main:
 		case e := <-dockerEvent:
 			err = dr.processDockerEvent(e, learnNetwork)
 			if err != nil {
-				log.Error(err)
+				log.WithFields(log.Fields{
+					"Event": e,
+					"Error": err,
+				}).Error("Failed to process docker event")
 			}
 		case r := <-routeEvent:
 			if r.Type != syscall.RTM_NEWROUTE {
@@ -262,11 +272,15 @@ Main:
 			}
 			err = dr.processRouteAddEvent(&r)
 			if err != nil {
-				log.Error(err)
+				log.WithFields(log.Fields{
+					"RouteEvent": r,
+					"Error":      err,
+				}).Error("Failed to process route add event")
 			}
 		case e := <-dockerEventErr:
-			log.Error(e)
+			logError("Error recieved from Docker Event Subscription.", e)
 		case _ = <-shutdown:
+			log.Debug("Shutdown request recieved")
 			break Main
 		}
 	}
@@ -306,6 +320,7 @@ Done:
 	if hostShortcut {
 		err := p2p.remove()
 		if err != nil {
+			logError("Failed to remove p2p link.", err)
 			return err
 		}
 	}
