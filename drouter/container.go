@@ -3,6 +3,7 @@ package drouter
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
@@ -17,69 +18,131 @@ const (
 )
 
 type container struct {
+	name   string
+	id     string
+	log    *log.Entry
 	handle *netlink.Handle
 }
 
 func newContainerFromID(id string) (*container, error) {
+	log.WithFields(log.Fields{
+		"ID": id,
+	}).Debug("Creating container object.")
 	cjson, err := dockerClient.ContainerInspect(context.Background(), id)
 	if err != nil {
-		log.Errorf("Failed to inspect container with id: %v", id)
+		log.WithFields(log.Fields{"id": id}).Error("Failed to inspect container.")
 		return nil, err
 	}
-	log.Debugf("Inspected container: %v", cjson.Name)
+	log.WithFields(log.Fields{"id": id}).Debug("Inspected container.")
 
 	if !cjson.State.Running {
+		log.WithFields(log.Fields{"id": id}).Debug("Container not running.")
 		return &container{}, nil
 	}
 
 	ch, err := netlinkHandleFromPid(cjson.State.Pid)
 	if err != nil {
+		log.WithFields(log.Fields{
+			"container": map[string]string{
+				"ID":  id,
+				"Pid": strconv.Itoa(cjson.State.Pid),
+			},
+			"Error": err,
+		}).Error("Failed to get netlink handle")
 		return nil, err
 	}
 
-	return &container{handle: ch}, nil
+	log.WithFields(log.Fields{"id": id}).Debug("Returning container object")
+	return &container{
+		handle: ch,
+		name:   cjson.Name,
+		id:     cjson.ID,
+		log: log.WithFields(log.Fields{
+			"container": map[string]string{
+				"Name": cjson.Name,
+				"ID":   cjson.ID,
+			}}),
+	}, nil
+}
+
+func (c *container) logError(msg string, err error) {
+	c.log.WithFields(log.Fields{"Error": err}).Error(msg)
 }
 
 //adds all known routes for provided container
 func (c *container) addAllRoutes() error {
+	c.log.Debug("Adding all routes")
 	if containerGateway {
+		c.log.Debug("Calling replaceGateway")
 		c.replaceGateway()
 		return nil
 	}
 
 	//Loop through all static routes, ensure each one is installed in the container
-	log.Info("Syncing static routes.")
 	//add routes for all the static routes
-	for _, sr := range staticRoutes {
+	for i, sr := range staticRoutes {
+		if i == 0 {
+			c.log.Info("Syncing static routes")
+		}
 		go c.addRoute(sr)
 	}
 
 	//Loop through all discovered networks, ensure each one is installed in the container
 	//Unless it is covered by a static route already
-	log.Info("Syncing discovered routes.")
 	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
 	if err != nil {
-		log.Error("Failed to get my routes.")
-		log.Error(err)
+		logError("Failed to get my routes.", err)
 	}
 
 Subnets:
-	for _, r := range routes {
+	for i, r := range routes {
+		if i == 0 {
+			c.log.Info("Syncing discovered routes.")
+		}
 		if r.Gw != nil {
 			continue
 		}
 		if hostShortcut {
 			if iputil.SubnetEqualSubnet(r.Dst, iputil.NetworkID(p2p.network)) {
+				c.log.WithFields(log.Fields{
+					"Destination": r.Dst,
+					"p2pNet":      p2p.network,
+				}).Debug("Skipping route to p2p network.")
 				continue
 			}
 		}
 		for _, sr := range staticRoutes {
 			if iputil.SubnetContainsSubnet(sr, r.Dst) {
-				log.Debugf("Skipping route %v covered by %v.", r.Dst, sr)
-				break Subnets
+				c.log.WithFields(log.Fields{
+					"Destination": r.Dst,
+					"Static":      sr,
+				}).Debug("Skipping route covered by static.")
+				continue Subnets
 			}
 		}
-		//TODO: filter routes that container is already connected to
+
+		croutes, err := c.getRoutes()
+		if err != nil {
+			c.logError("Failed to get container routes", err)
+			return err
+		}
+
+		for _, cr := range croutes {
+			if cr.Gw != nil {
+				continue
+			}
+			if iputil.SubnetContainsSubnet(cr.Dst, r.Dst) {
+				c.log.WithFields(log.Fields{
+					"Destination": r.Dst,
+					"Direct":      cr.Dst,
+				}).Debug("Skipping already direct route.")
+				continue Subnets
+			}
+		}
+
+		c.log.WithFields(log.Fields{
+			"Destination": r.Dst,
+		}).Debug("Adding route")
 		go c.addRoute(r.Dst)
 	}
 
@@ -87,17 +150,28 @@ Subnets:
 }
 
 func (c *container) addRoute(sn *net.IPNet) {
+	c.log.WithFields(log.Fields{
+		"Subnet": sn,
+	}).Debug("Adding route to container.")
 	gateway, err := c.getPathIP()
 	if err != nil {
-		log.Error(err)
+		c.logError("Failed to get path IP", err)
 		return
 	}
 	c.addRouteVia(sn, gateway)
 }
 
 func (c *container) addRouteVia(sn *net.IPNet, gateway net.IP) {
+	c.log.WithFields(log.Fields{
+		"Subnet":  sn,
+		"Gateway": gateway,
+	}).Debug("Adding route to container via gateway.")
 	if sn != nil && (sn.IP.To4() == nil) != (gateway.To4() == nil) {
 		// Dst is a different IP family
+		c.log.WithFields(log.Fields{
+			"Subnet":  sn,
+			"Gateway": gateway,
+		}).Debug("Gateway and Subnet Families don't match")
 		return
 	}
 
@@ -106,64 +180,105 @@ func (c *container) addRouteVia(sn *net.IPNet, gateway net.IP) {
 		Gw:  gateway,
 	}
 
-	log.Infof("Adding route to %v via %v.", sn, gateway)
+	c.log.WithFields(log.Fields{
+		"Subnet":  sn,
+		"Gateway": gateway,
+	}).Info("Adding route to container.")
 	err := c.handle.RouteAdd(route)
-	if err != nil {
-		if !strings.Contains(err.Error(), "file exists") {
-			log.Error(err)
-			return
-		}
-		routes, err2 := c.handle.RouteGet(sn.IP)
-		if err2 != nil {
-			log.Errorf("Failed to get container routes to: %v.", sn.IP)
-			log.Error(err)
-			return
-		}
-		for _, r := range routes {
-			if r.Gw.Equal(gateway) || r.Gw == nil {
-				return
-			}
-			err := c.handle.RouteDel(&netlink.Route{Dst: sn, Gw: r.Gw})
-			if err != nil {
-				log.Errorf("Failed to delete route to %v via %v.", sn, r.Gw)
-				log.Error(err)
-				return
-			}
-		}
-		c.addRoute(sn)
+
+	// all went well, return
+	if err == nil {
+		return
 	}
+
+	// something other than file exists failed
+	if !strings.Contains(err.Error(), "file exists") {
+		c.log.WithFields(log.Fields{
+			"Subnet":  sn,
+			"Gateway": gateway,
+			"Error":   err,
+		}).Error("Failed to Add route to container.")
+		return
+	}
+
+	// got file exists, delete and try again
+	routes, err := c.handle.RouteGet(sn.IP)
+	if err != nil {
+		c.log.WithFields(log.Fields{
+			"IP":    sn.IP,
+			"Error": err,
+		}).Error("Failed to get route to IP.")
+		return
+	}
+	for _, r := range routes {
+		if r.Gw.Equal(gateway) || r.Gw == nil {
+			c.log.WithFields(log.Fields{
+				"Subnet":           sn,
+				"Gateway":          gateway,
+				"Existing Gateway": r.Gw,
+			}).Debug("Route gateway is already correct")
+			return
+		}
+		err := c.handle.RouteDel(&netlink.Route{Dst: sn, Gw: r.Gw})
+		if err != nil {
+			c.log.WithFields(log.Fields{
+				"Subnet":  sn,
+				"Gateway": r.Gw,
+				"Error":   err,
+			}).Error("Failed to delete route")
+			return
+		}
+		c.log.WithFields(log.Fields{
+			"Subnet":  sn,
+			"Gateway": r.Gw,
+		}).Debug("Deleted route")
+	}
+
+	c.log.WithFields(log.Fields{
+		"Subnet":  sn,
+		"Gateway": gateway,
+	}).Debug("Retrying add route")
+	c.addRoute(sn)
 }
 
 func (c *container) delRoutes(to *net.IPNet) {
+	c.log.WithFields(log.Fields{
+		"Subnet": to,
+	}).Debug("Deleting routes to subnet.")
 	c.delRoutesVia(to, nil)
 }
 
 func (c *container) delRoutesVia(to, via *net.IPNet) {
+	c.log.WithFields(log.Fields{
+		"Subnet": to,
+		"Via":    via,
+	}).Debug("Deleting routes to subnet via gateways in Via.")
 	//get all container routes
 	routes, err := c.getRoutes()
 	if err != nil {
-		log.Error("Failed to get container route table.")
-		log.Error(err)
+		c.logError("Failed to get container route table.", err)
 		return
 	}
 
 	//get all drouter ips
 	ips, err := netlink.AddrList(nil, netlink.FAMILY_ALL)
 	if err != nil {
-		log.Error("Failed to get drouter ip addresses.")
-		log.Error(err)
+		logError("Failed to get drouter ip addresses.", err)
 		return
 	}
 
 	gws, err := c.getPathIPs()
 	if err != nil {
-		log.Error(err)
+		c.logError("Failed to get path IPs", err)
 		return
 	}
 
 	var altgw net.IP = nil
 	for _, gw := range gws {
 		if via != nil && !via.Contains(gw) {
+			c.log.WithFields(log.Fields{
+				"AltGateway": gw,
+			}).Debug("Alternate gateway found.")
 			altgw = gw
 			break
 		}
@@ -181,9 +296,17 @@ func (c *container) delRoutesVia(to, via *net.IPNet) {
 			if via != nil && !via.Contains(r.Gw) {
 				continue
 			}
+			c.log.WithFields(log.Fields{
+				"Destination": r.Dst,
+				"Gateway":     r.Gw,
+			}).Debug("Deleting route from container")
 			err := c.handle.RouteDel(&r)
 			if err != nil {
-				log.Errorf("Failed to delete container route to %v via %v", r.Dst, r.Gw)
+				c.log.WithFields(log.Fields{
+					"Destination": r.Dst,
+					"Gateway":     r.Gw,
+					"Error":       err,
+				}).Error("Failed to delete route from container")
 				continue
 			}
 			if altgw == nil && r.Dst == nil {
@@ -343,6 +466,7 @@ func (c *container) getPathIPs() (ips []net.IP, err error) {
 }
 
 func (c *container) getPathIP() (net.IP, error) {
+	// TODO: This needs to accept a family
 	ips, err := c.getPathIPs()
 	if err != nil {
 		return nil, err
