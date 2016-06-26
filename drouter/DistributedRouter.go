@@ -77,7 +77,7 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	transitNetName = options.TransitNet
 
 	if !aggressive && len(transitNetName) == 0 {
-		return &distributedRouter{}, fmt.Errorf("Detected --no-aggressive, and --transit-net was not found.")
+		log.Warn("Detected --no-aggressive and --transit-net was not found. This router may not be able to route to networks on other hosts")
 	}
 
 	//get the pid of drouter
