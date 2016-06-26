@@ -122,7 +122,7 @@ func Run(ctx *cli.Context) error {
 
 	err := drouter.Run(opts, quit)
 	if err != nil {
-		log.Error(err)
+		log.WithFields(log.Fields{"Error": err}).Error("Error running drouter.")
 		return err
 	}
 

@@ -20,6 +20,10 @@ const (
 	DEL_ROUTE = false
 )
 
+func logError(msg string, err error) {
+	log.WithFields(log.Fields{"err": err}).Error(msg)
+}
+
 func netlinkHandleFromPid(pid int) (*netlink.Handle, error) {
 	log.Debugf("Getting NsHandle for pid: %v", pid)
 	ns, err := netns.GetFromPid(pid)
