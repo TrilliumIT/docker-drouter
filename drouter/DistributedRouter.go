@@ -238,6 +238,29 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 
 	dockerEvent := make(chan dockerevents.Message)
 	defer close(dockerEvent)
+	// on startup generate connect events for every container
+	dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
+	if err != nil {
+		logError("Error getting network list", err)
+		return
+	}
+	for _, dn := range dockerNets {
+		for c, _ := range dn.Containers {
+			go func() {
+				dockerEvent <- dockerevents.Message{
+					Type:   "network",
+					Action: "connect",
+					Actor: dockerevents.Actor{
+						ID: dn.ID,
+						Attributes: map[string]string{
+							"container": c,
+						},
+					},
+				}
+			}()
+		}
+	}
+	// subscribe to real docker events
 	dockerEventErr := events.Monitor(context.Background(), dockerClient, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
 		dockerEvent <- event
 		return
@@ -252,28 +275,6 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 		logError("Failed to subscribe to drouter routing table.", err)
 		return err
 	}
-
-	// on startup generate connect events for every container
-	go func() {
-		dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
-		if err != nil {
-			logError("Error getting network list", err)
-			return
-		}
-		for _, dn := range dockerNets {
-			for c, _ := range dn.Containers {
-				dockerEvent <- dockerevents.Message{
-					Type: "network",
-					Actor: dockerevents.Actor{
-						ID: dn.ID,
-						Attributes: map[string]string{
-							"container": c,
-						},
-					},
-				}
-			}
-		}
-	}()
 
 Main:
 	for {
