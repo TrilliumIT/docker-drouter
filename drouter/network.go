@@ -115,7 +115,6 @@ func (n *network) disconnect() {
 }
 
 func (n *network) isConnected() bool {
-	n.log.Debug("Determining if connected")
 	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
 	if err != nil {
 		n.logError("Failed to get routes.", err)

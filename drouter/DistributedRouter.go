@@ -57,8 +57,9 @@ type distributedRouter struct {
 	defaultRoute net.IP
 }
 
-func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter, error) {
+func initVars(options *DistributedRouterOptions) error {
 	var err error
+
 	//set global vars from options
 	ipOffset = options.IPOffset
 	aggressive = options.Aggressive
@@ -67,6 +68,17 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	hostGateway = options.HostGateway
 	masquerade = options.Masquerade
 	instanceName = options.InstanceName
+	transitNetName = options.TransitNet
+
+	if !aggressive && len(transitNetName) == 0 {
+		log.Warn("Detected --no-aggressive and --transit-net was not found. This router may not be able to route to networks on other hosts")
+	}
+
+	//get the pid of drouter
+	if os.Getpid() == 1 {
+		return fmt.Errorf("Running as pid 1. Running with --pid=host required.")
+	}
+
 	//staticRoutes
 	for _, sr := range options.StaticRoutes {
 		_, cidr, err := net.ParseCIDR(sr)
@@ -80,24 +92,12 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 		staticRoutes = append(staticRoutes, cidr)
 	}
 
-	transitNetName = options.TransitNet
-
-	if !aggressive && len(transitNetName) == 0 {
-		log.Warn("Detected --no-aggressive and --transit-net was not found. This router may not be able to route to networks on other hosts")
-	}
-
-	//get the pid of drouter
-	pid := os.Getpid()
-	if pid == 1 {
-		return &distributedRouter{}, fmt.Errorf("Running as pid 1. Running with --pid=host required.")
-	}
-
 	//get docker client
 	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
 	dockerClient, err = dockerclient.NewClient("unix:///var/run/docker.sock", "v1.23", nil, defaultHeaders)
 	if err != nil {
 		logError("Error connecting to docker socket", err)
-		return &distributedRouter{}, err
+		return err
 	}
 
 	//process options for assumptions and validity
@@ -116,7 +116,7 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	sc, err := getSelfContainer()
 	if err != nil {
 		log.Error("Failed to getSelfContainer(). I am running in a container, right?.")
-		return nil, err
+		return err
 	}
 	selfContainerID = sc.ID
 
@@ -134,6 +134,16 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 			}).Error("Failed to leave network.")
 			continue
 		}
+	}
+	return nil
+
+}
+
+func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter, error) {
+
+	err := initVars(options)
+	if err != nil {
+		return &distributedRouter{}, err
 	}
 
 	//create our distributedRouter object
@@ -242,7 +252,7 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 	dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
 	if err != nil {
 		logError("Error getting network list", err)
-		return
+		return err
 	}
 	for _, dn := range dockerNets {
 		for c, _ := range dn.Containers {

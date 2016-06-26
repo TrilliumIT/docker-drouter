@@ -19,3 +19,7 @@ import:
   subpackages:
   - context
 - package: github.com/TrilliumIT/iputil
+- package: github.com/stretchr/testify
+  subpackages:
+  - assert
+  - require
