@@ -33,15 +33,18 @@ func TestMain(m *testing.M) {
 	bg = context.Background()
 
 	exitStatus = m.Run()
-	dns, err := dc.NetworkList(bg, dockerTypes.NetworkListOptions{})
+	dockerNets, err := dc.NetworkList(bg, dockerTypes.NetworkListOptions{})
 	if err != nil {
 		return
 	}
-	for _, dn := range dns {
+	for _, dn := range dockerNets {
 		if strings.HasPrefix(dn.Name, "drntest_n") {
 			dc.NetworkRemove(bg, dn.ID)
 		}
 	}
+
+	// rejoin bridge, required to upload coverage
+	dc.NetworkConnect(bg, "bridge", selfContainerID, &dockerNTypes.EndpointSettings{})
 }
 
 // A most basic test to make sure it doesn't die on start
