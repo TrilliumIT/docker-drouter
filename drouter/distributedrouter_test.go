@@ -12,6 +12,9 @@ import (
 	dockerCTypes "github.com/docker/engine-api/types/container"
 	dockerNTypes "github.com/docker/engine-api/types/network"
 	"golang.org/x/net/context"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -45,6 +48,12 @@ func TestMain(m *testing.M) {
 
 	// rejoin bridge, required to upload coverage
 	dc.NetworkConnect(bg, "bridge", selfContainerID, &dockerNTypes.EndpointSettings{})
+}
+
+func checkLogs(entries []*log.Entry, t *testing.T) {
+	for _, e := range entries {
+		assert.Equal(t, e.Level <= log.InfoLevel, true, "All logs should be <= Info")
+	}
 }
 
 // A most basic test to make sure it doesn't die on start
