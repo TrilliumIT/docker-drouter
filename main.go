@@ -107,6 +107,7 @@ func Run(ctx *cli.Context) error {
 		P2PAddr:          ctx.String("p2p-net"),
 		StaticRoutes:     ctx.StringSlice("static-route"),
 		TransitNet:       ctx.String("transit-net"),
+		InstanceName:     ctx.String("drouter-instance"),
 	}
 
 	quit := make(chan struct{})
