@@ -2,7 +2,7 @@
 
 This container provides a distributed router for docker containers.
 
-[![Coverage Status](https://coveralls.io/repos/github/TrilliumIT/docker-drouter/badge.svg?branch=master)](https://coveralls.io/github/TrilliumIT/docker-drouter?branch=master)
+[![Coverage Status](https://coveralls.io/repos/github/TrilliumIT/docker-drouter/badge.svg?branch=tests)](https://coveralls.io/github/TrilliumIT/docker-drouter?branch=tests)
 
 ## Use Case
 
