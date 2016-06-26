@@ -19,7 +19,29 @@ type network struct {
 	ID        string
 	IPAM      dockernetworks.IPAM
 	Options   map[string]string
+	log       *log.Entry
 	adminDown bool
+}
+
+func newNetwork(n *dockertypes.NetworkResource) *network {
+	//create the network
+	drn := &network{
+		ID:        n.ID,
+		IPAM:      n.IPAM,
+		Options:   n.Options,
+		adminDown: false,
+		log: log.WithFields(log.Fields{
+			"network": map[string]string{
+				"Name": n.Name,
+				"ID":   n.ID,
+			}}),
+	}
+
+	return drn
+}
+
+func (n *network) logError(msg string, err error) {
+	c.log.WithFields(log.Fields{"Error": err}).Error(msg)
 }
 
 //connects to a drNetwork
@@ -98,19 +120,6 @@ func (drn *network) disconnect() {
 		return
 	}
 	log.Debugf("Disconnected from network: %v", drn.Name)
-}
-
-func newNetwork(n *dockertypes.NetworkResource) *network {
-	//create the network
-	drn := &network{
-		Name:      n.Name,
-		ID:        n.ID,
-		IPAM:      n.IPAM,
-		Options:   n.Options,
-		adminDown: false,
-	}
-
-	return drn
 }
 
 func (n *network) isConnected() bool {
