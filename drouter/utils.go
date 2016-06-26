@@ -129,56 +129,62 @@ func modifyRoute(to, via *net.IPNet, action bool) error {
 		return err
 	}
 
+	var modRouteWG sync.WaitGroup
 	//do container routes
 	for _, dc := range dockerContainers {
-		if dc.HostConfig.NetworkMode == "host" {
-			continue
-		}
-		if dc.ID == selfContainerID {
-			continue
-		}
+		modRouteWg.Add(1)
+		go func() {
+			defer modRouteWg.Done()
+			if dc.HostConfig.NetworkMode == "host" {
+				return
+			}
+			if dc.ID == selfContainerID {
+				return
+			}
 
-		//connected to the affected route
-		if dockerContainerInSubnet(&dc, ar) {
+			//connected to the affected route
+			if dockerContainerInSubnet(&dc, ar) {
+				//create a container object (inspect and get handle)
+				c, err := newContainerFromID(dc.ID)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+
+				switch action {
+				case ADD_ROUTE:
+					go c.addAllRoutes()
+				case DEL_ROUTE:
+					go c.delRoutesVia(to, via)
+				}
+				return
+			}
+
+			//This route is already covered by a static supernet or containerGateway
+			if containerGateway || coveredByStatic {
+				return
+			}
+
+			//if we don't have a connection, we can't route for it anyway
+			if !dockerContainerSharesNetwork(&dc) {
+				return
+			}
+
 			//create a container object (inspect and get handle)
 			c, err := newContainerFromID(dc.ID)
 			if err != nil {
 				log.Error(err)
-				continue
+				return
 			}
 
 			switch action {
 			case ADD_ROUTE:
-				go c.addAllRoutes()
+				c.addRoute(to)
 			case DEL_ROUTE:
-				go c.delRoutesVia(to, via)
+				c.delRoutesVia(to, via)
 			}
-			continue
-		}
-
-		//This route is already covered by a static supernet or containerGateway
-		if containerGateway || coveredByStatic {
-			continue
-		}
-
-		//if we don't have a connection, we can't route for it anyway
-		if !dockerContainerSharesNetwork(&dc) {
-			continue
-		}
-
-		//create a container object (inspect and get handle)
-		c, err := newContainerFromID(dc.ID)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-
-		switch action {
-		case ADD_ROUTE:
-			go c.addRoute(to)
-		case DEL_ROUTE:
-			go c.delRoutesVia(to, via)
-		}
+		}()
 	}
+	modRouteWG.Wait()
 	return nil
 }

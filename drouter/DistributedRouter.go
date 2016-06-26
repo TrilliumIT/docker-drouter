@@ -29,6 +29,7 @@ var (
 	staticRoutes     []*net.IPNet
 	transitNetName   string
 	selfContainerID  string
+	instanceName     string
 
 	//other globals
 	dockerClient *dockerclient.Client
@@ -48,6 +49,7 @@ type DistributedRouterOptions struct {
 	P2PAddr          string
 	StaticRoutes     []string
 	TransitNet       string
+	InstanceName     string
 }
 
 type distributedRouter struct {
@@ -64,6 +66,7 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	containerGateway = options.ContainerGateway
 	hostGateway = options.HostGateway
 	masquerade = options.Masquerade
+	instanceName = options.InstanceName
 	//staticRoutes
 	for _, sr := range options.StaticRoutes {
 		_, cidr, err := net.ParseCIDR(sr)
