@@ -3,6 +3,7 @@ package drouter
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,18 +24,28 @@ func TestMain(m *testing.M) {
 	defer func() { os.Exit(exitStatus) }()
 	var err error
 
-	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
-	dc, err = dockerclient.NewClient("unix:///var/run/docker.sock", "v1.23", nil, defaultHeaders)
+	opts := &DistributedRouterOptions{}
+	err = initVars(opts)
 	if err != nil {
 		return
 	}
+	dc = dockerClient
 	bg = context.Background()
 
 	exitStatus = m.Run()
+	dns, err := dc.NetworkList(bg, dockerTypes.NetworkListOptions{})
+	if err != nil {
+		return
+	}
+	for _, dn := range dns {
+		if strings.HasPrefix(dn.Name, "drntest_n") {
+			dc.NetworkRemove(bg, dn.ID)
+		}
+	}
 }
 
 // A most basic test to make sure it doesn't die on start
-func TestRunClose(t *testing.T) {
+func testRunClose(t *testing.T) {
 	opts := &DistributedRouterOptions{
 		Aggressive: true,
 	}
@@ -61,42 +72,6 @@ func TestRunClose(t *testing.T) {
 
 	if err != nil {
 		t.Errorf("Error on Run Return: %v", err)
-	}
-}
-
-const (
-	NET_NAME  = "drntest_n%v"
-	NET_IPNET = "192.168.242.%v/29"
-	DR_INST   = "dr_test"
-)
-
-func createNetwork(n int, dr bool, t *testing.T) string {
-	name := fmt.Sprintf(NET_NAME, n)
-	opts := make(map[string]string)
-	if dr {
-		opts["drouter"] = DR_INST
-	}
-	r, err := dc.NetworkCreate(bg, name, dockerTypes.NetworkCreate{
-		Options: opts,
-		IPAM: dockerNTypes.IPAM{
-			Config: []dockerNTypes.IPAMConfig{
-				dockerNTypes.IPAMConfig{
-					Subnet:  fmt.Sprintf(NET_IPNET, n*8),
-					Gateway: fmt.Sprintf(NET_IPNET, n*8+1),
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Error creating network: %v", err)
-	}
-	return r.ID
-}
-
-func removeNetwork(id string, t *testing.T) {
-	err := dc.NetworkRemove(bg, id)
-	if err != nil {
-		t.Fatalf("Error removing network: %v", err)
 	}
 }
 
