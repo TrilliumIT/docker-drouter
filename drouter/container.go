@@ -455,9 +455,9 @@ func (c *container) disconnectEvent(drn *network) error {
 		for n, _ := range dc.NetworkSettings.Networks {
 			if n == drn.Name {
 				c.log.WithFields(log.Fields{
-					"net-container": map[string]string{
-						"Name": dc.Name,
-						"ID":   dc.ID,
+					"net-container": map[string]interface{}{
+						"Names": dc.Names,
+						"ID":    dc.ID,
 					},
 				}).Debug("Network still contains net-container")
 				return nil
