@@ -22,20 +22,7 @@ var (
 	bg context.Context
 )
 
-func TestMain(m *testing.M) {
-	exitStatus := 1
-	defer func() { os.Exit(exitStatus) }()
-	var err error
-
-	opts := &DistributedRouterOptions{}
-	err = initVars(opts)
-	if err != nil {
-		return
-	}
-	dc = dockerClient
-	bg = context.Background()
-
-	exitStatus = m.Run()
+func cleanup() {
 	dockerNets, err := dc.NetworkList(bg, dockerTypes.NetworkListOptions{})
 	if err != nil {
 		return
@@ -45,6 +32,28 @@ func TestMain(m *testing.M) {
 			dc.NetworkRemove(bg, dn.ID)
 		}
 	}
+}
+
+func TestMain(m *testing.M) {
+	exitStatus := 1
+	defer func() { os.Exit(exitStatus) }()
+	var err error
+
+	opts := &DistributedRouterOptions{
+		InstanceName: DR_INST,
+	}
+	err = initVars(opts)
+	if err != nil {
+		return
+	}
+	dc = dockerClient
+	bg = context.Background()
+
+	cleanup()
+
+	exitStatus = m.Run()
+
+	cleanup()
 
 	// rejoin bridge, required to upload coverage
 	dc.NetworkConnect(bg, "bridge", selfContainerID, &dockerNTypes.EndpointSettings{})
