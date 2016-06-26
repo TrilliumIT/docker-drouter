@@ -2,6 +2,7 @@ package drouter
 
 import (
 	"fmt"
+	"net"
 	"testing"
 
 	log "github.com/Sirupsen/logrus"
@@ -11,6 +12,7 @@ import (
 
 	dockerTypes "github.com/docker/engine-api/types"
 	dockerNTypes "github.com/docker/engine-api/types/network"
+	"github.com/vishvananda/netlink"
 )
 
 const (
@@ -50,10 +52,10 @@ func removeNetwork(id string, t *testing.T) {
 
 func TestNetworkConnect(t *testing.T) {
 	assert := assert.New(t)
-	ipOffset = 0
-	dockerClient = dc
 
 	n0ID := createNetwork(0, true, t)
+	defer removeNetwork(n0ID, t)
+
 	n0r, err := dc.NetworkInspect(bg, n0ID)
 	assert.Equal(err, nil, "Error inspecting network")
 
@@ -64,7 +66,51 @@ func TestNetworkConnect(t *testing.T) {
 		assert.Equal(log.DebugLevel, e.Level, "All messages should be debug")
 	}
 	n0.disconnect()
-	for _, e := range hook.Entries {
-		assert.Equal(log.DebugLevel, e.Level, "All messages should be debug")
-	}
+	checkLogs(hook.Entries, t)
+}
+
+func TestIPOffset(t *testing.T) {
+	assert := assert.New(t)
+	ipOffset = 2
+	defer func() { ipOffset = 0 }()
+
+	n0ID := createNetwork(0, true, t)
+	defer removeNetwork(n0ID, t)
+
+	n0r, err := dc.NetworkInspect(bg, n0ID)
+	assert.Equal(err, nil, "Error inspecting network")
+
+	hook := logtest.NewGlobal()
+	n0 := newNetwork(&n0r)
+	n0.connect()
+
+	routes, err := netlink.RouteGet(net.ParseIP("192.168.242.1"))
+	assert.Equal(err, nil, "Error getting routes")
+	assert.Equal(routes[0].Src.Equal(net.ParseIP("192.168.242.2")), true, "IP not what was expected")
+
+	n0.disconnect()
+	checkLogs(hook.Entries, t)
+}
+
+func TestNegativeIPOffset(t *testing.T) {
+	assert := assert.New(t)
+	ipOffset = -1
+	defer func() { ipOffset = 0 }()
+
+	n0ID := createNetwork(0, true, t)
+	defer removeNetwork(n0ID, t)
+
+	n0r, err := dc.NetworkInspect(bg, n0ID)
+	assert.Equal(err, nil, "Error inspecting network")
+
+	hook := logtest.NewGlobal()
+	n0 := newNetwork(&n0r)
+	n0.connect()
+
+	routes, err := netlink.RouteGet(net.ParseIP("192.168.242.1"))
+	assert.Equal(err, nil, "Error getting routes")
+	assert.Equal(routes[0].Src.Equal(net.ParseIP("192.168.242.6")), true, "IP not what was expected")
+
+	n0.disconnect()
+	checkLogs(hook.Entries, t)
 }
