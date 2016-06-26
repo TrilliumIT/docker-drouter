@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/TrilliumIT/iputil"
@@ -132,9 +133,9 @@ func modifyRoute(to, via *net.IPNet, action bool) error {
 	var modRouteWG sync.WaitGroup
 	//do container routes
 	for _, dc := range dockerContainers {
-		modRouteWg.Add(1)
+		modRouteWG.Add(1)
 		go func() {
-			defer modRouteWg.Done()
+			defer modRouteWG.Done()
 			if dc.HostConfig.NetworkMode == "host" {
 				return
 			}

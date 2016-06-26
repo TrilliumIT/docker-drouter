@@ -2,8 +2,8 @@ package drouter
 
 import (
 	"net"
-	"strconv"
 	"strings"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/TrilliumIT/iputil"
@@ -41,11 +41,11 @@ func newNetwork(n *dockertypes.NetworkResource) *network {
 }
 
 func (n *network) logError(msg string, err error) {
-	c.log.WithFields(log.Fields{"Error": err}).Error(msg)
+	n.log.WithFields(log.Fields{"Error": err}).Error(msg)
 }
 
 //connects to a drNetwork
-func (drn *network) connect() {
+func (n *network) connect() {
 	n.log.Debug("Connecting to network")
 
 	endpointSettings := &dockernetworks.EndpointSettings{}
@@ -55,10 +55,10 @@ func (drn *network) connect() {
 		n.log.WithFields(log.Fields{
 			"ip-offset": ipOffset,
 		}).Debug("IP-Offset configured")
-		for _, ic := range drn.IPAM.Config {
+		for _, ic := range n.IPAM.Config {
 			_, subnet, err := net.ParseCIDR(ic.Subnet)
 			if err != nil {
-				n.log.WithFields(log.Fiels{
+				n.log.WithFields(log.Fields{
 					"Subnet": ic.Subnet,
 					"Error":  err,
 				}).Error("Failed to parse subnet.")
@@ -85,7 +85,7 @@ func (drn *network) connect() {
 		}
 	}
 	//connect to network
-	err := dockerClient.NetworkConnect(context.Background(), drn.ID, selfContainerID, endpointSettings)
+	err := dockerClient.NetworkConnect(context.Background(), n.ID, selfContainerID, endpointSettings)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			n.log.WithFields(log.Fields{
@@ -101,12 +101,12 @@ func (drn *network) connect() {
 }
 
 //disconnects from this drNetwork
-func (drn *network) disconnect() {
+func (n *network) disconnect() {
 	n.log.Debug("Disconnecting from network")
-	drn.removeRoutes
+	n.removeRoutes()
 
 	//finished route removal, disconnect
-	err := dockerClient.NetworkDisconnect(context.Background(), drn.ID, selfContainerID, true)
+	err := dockerClient.NetworkDisconnect(context.Background(), n.ID, selfContainerID, true)
 	if err != nil {
 		n.logError("Failed to disconnect from network", err)
 		return
@@ -129,7 +129,7 @@ func (n *network) isConnected() bool {
 			}
 			_, subnet, err := net.ParseCIDR(ic.Subnet)
 			if err != nil {
-				n.log.WithFields(log.Fiels{
+				n.log.WithFields(log.Fields{
 					"Subnet": ic.Subnet,
 					"Error":  err,
 				}).Error("Failed to parse subnet.")
@@ -150,29 +150,30 @@ func (n *network) isDRouter() bool {
 	return n.Options["drouter"] == instanceName || n.ID == transitNetID
 }
 
-func (drn *network) connectEvent() error {
-	drn.adminDown = false
+func (n *network) connectEvent() error {
+	n.adminDown = false
 	return nil
 }
 
-func (drn *network) disconnectEvent() error {
+func (n *network) disconnectEvent() error {
 	n.log.Debug("Network disconnect detected")
 	if !aggressive {
 		//do nothing on disconnect event if not aggressive mode
 		return nil
 	}
 
-	drn.adminDown = true
-	drn.removeRoutes()
+	n.adminDown = true
+	n.removeRoutes()
 
 	return nil
 }
 
-func (drn *network) removeRoutes() {
-	for _, ic := range drn.IPAM.Config {
+func (n *network) removeRoutes() {
+	var routeDelWG sync.WaitGroup
+	for _, ic := range n.IPAM.Config {
 		_, sn, err := net.ParseCIDR(ic.Subnet)
 		if err != nil {
-			n.log.WithFields(log.Fiels{
+			n.log.WithFields(log.Fields{
 				"Subnet": ic.Subnet,
 				"Error":  err,
 			}).Error("Failed to parse subnet.")
