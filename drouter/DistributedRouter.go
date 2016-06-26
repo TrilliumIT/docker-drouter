@@ -253,6 +253,28 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 		return err
 	}
 
+	// on startup generate connect events for every container
+	go func() {
+		dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
+		if err != nil {
+			logError("Error getting network list", err)
+			return
+		}
+		for _, dn := range dockerNets {
+			for c, _ := range dn.Containers {
+				dockerEvent <- dockerevents.Message{
+					Type: "network",
+					Actor: dockerevents.Actor{
+						ID: dn.ID,
+						Attributes: map[string]string{
+							"container": c,
+						},
+					},
+				}
+			}
+		}
+	}()
+
 Main:
 	for {
 		select {
