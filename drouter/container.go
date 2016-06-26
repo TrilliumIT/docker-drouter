@@ -321,9 +321,10 @@ func (c *container) delRoutesVia(to, via *net.IPNet) {
 
 //sets the provided gateway's container to a connected drouter address
 func (c *container) replaceGateway() error {
+	c.log.Debug("Replacing gateway.")
 	gateway, err := c.getPathIP()
 	if err != nil {
-		log.Error("Failed to get path IP when replacing the gateway.")
+		c.logError("Failed to get path IP", err)
 		return err
 	}
 	return c.setGatewayTo(gateway)
@@ -331,26 +332,45 @@ func (c *container) replaceGateway() error {
 
 //sets the provided container's default route to the provided gateway
 func (c *container) setGatewayTo(gateway net.IP) error {
+	c.log.WithFields(log.Fields{
+		"Gateway": gateway,
+	}).Debug("Setting gateway.")
+
 	c.offsetGateways(GATEWAY_OFFSET)
 
 	if gateway == nil || gateway.Equal(net.IP{}) {
+		c.log.WithFields(log.Fields{
+			"Gateway": gateway,
+		}).Debug("Gateway is nil, doing nothing.")
 		return nil
 	}
 
 	route := &netlink.Route{Dst: nil, Gw: gateway}
 	err := c.handle.RouteAdd(route)
 	if err != nil {
+		c.log.WithFields(log.Fields{
+			"Gateway": gateway,
+			"Error":   err,
+		}).Debug("Failed to add container default route.")
 		return err
 	}
-	log.Info("Default route changed to: %v", route)
+	c.log.WithFields(log.Fields{
+		"Gateway": gateway,
+	}).Info("Gateway successfully set.")
 
 	return nil
 }
 
 // called during a network connect event
 func (c *container) connectEvent(drn *network) error {
+	c.log.WithFields(log.Fields{
+		"network": drn,
+	}).Debug("Container connect event.")
 	if !drn.isConnected() {
 		//connect drouter to the network that the container just connected to
+		c.log.WithFields(log.Fields{
+			"network": drn,
+		}).Debug("Network not connected, connecting asynchronously.")
 		connectWG.Add(1)
 		go func() {
 			defer connectWG.Done()
@@ -362,6 +382,9 @@ func (c *container) connectEvent(drn *network) error {
 
 	//let's push our routes into this new container
 	if containerGateway {
+		c.log.WithFields(log.Fields{
+			"network": drn,
+		}).Debug("Asynchronously replacing container gateway.")
 		go c.replaceGateway()
 		return nil
 	}
@@ -369,29 +392,41 @@ func (c *container) connectEvent(drn *network) error {
 	for _, ic := range drn.IPAM.Config {
 		_, subnet, err := net.ParseCIDR(ic.Subnet)
 		if err != nil {
-			log.Error(err)
+			c.log.WithFields(log.Fields{
+				"Subnet": ic.Subnet,
+				"Error":  err,
+			}).Error("Failed to parse IPAM Subnet.")
 			continue
 		}
 		c.delRoutes(subnet)
 	}
 
+	c.log.Debug("Asynchronously adding all routes to container.")
 	go c.addAllRoutes()
 	return nil
 }
 
 // called when we detect a container has disconnected from a drouter network
 func (c *container) disconnectEvent(drn *network) error {
+	c.log.WithFields(log.Fields{
+		"network": drn,
+	}).Debug("Container disconnect event.")
 	for _, ic := range drn.IPAM.Config {
 		subnet, err := netlink.ParseIPNet(ic.Subnet)
 		if err != nil {
-			log.Errorf("Failed to parse ipam config subnet: %v", ic.Subnet)
-			log.Error(err)
+			c.log.WithFields(log.Fields{
+				"Subnet": ic.Subnet,
+				"Error":  err,
+			}).Error("Failed to parse IPAM Subnet.")
 			continue
 		}
 		c.delRoutesVia(nil, subnet)
 	}
 
-	if _, err := c.getPathIP(); err == nil {
+	if pIP, err := c.getPathIP(); err == nil {
+		c.log.WithFields(log.Fields{
+			"PathIP": pIP,
+		}).Debug("Found a remaining path IP, adding all routes.")
 		c.addAllRoutes()
 	}
 
@@ -400,11 +435,13 @@ func (c *container) disconnectEvent(drn *network) error {
 	}
 
 	//if not aggressive mode, then we disconnect from the network if this is the last connected container
+	c.log.Debug("Waiting on any pending connections")
 	connectWG.Wait()
 
 	//loop through all the containers
 	dockerContainers, err := dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
 	if err != nil {
+		c.logError("Failed to get container list", err)
 		return err
 	}
 	for _, dc := range dockerContainers {
@@ -417,7 +454,12 @@ func (c *container) disconnectEvent(drn *network) error {
 
 		for n, _ := range dc.NetworkSettings.Networks {
 			if n == drn.Name {
-				// This netowork is still in use
+				c.log.WithFields(log.Fields{
+					"net-container": map[string]string{
+						"Name": dc.Name,
+						"ID":   dc.ID,
+					},
+				}).Debug("Network still contains net-container")
 				return nil
 			}
 		}
@@ -425,7 +467,13 @@ func (c *container) disconnectEvent(drn *network) error {
 
 	select {
 	case _ = <-stopChan:
+		c.log.WithFields(log.Fields{
+			"network": drn,
+		}).Debug("Shutdown detected.")
 	default:
+		c.log.WithFields(log.Fields{
+			"network": drn,
+		}).Debug("Asynchronously disconnecting from network.")
 		go drn.disconnect()
 	}
 
@@ -434,13 +482,16 @@ func (c *container) disconnectEvent(drn *network) error {
 
 //returns a drouter IP that is on some same network as provided container
 func (c *container) getPathIPs() (ips []net.IP, err error) {
+	c.log.Debug("Getting path IPs")
 	if c.handle == nil {
-		return nil, fmt.Errorf("No namespace handle for container, is it running?")
+		err := fmt.Errorf("No namespace handle for container, is it running?")
+		c.logError("No namespace handle for container", err)
+		return nil, err
 	}
 
 	addrs, err := c.handle.AddrList(nil, netlink.FAMILY_V4)
 	if err != nil {
-		log.Error("Failed to list container addresses.")
+		c.logError("Failed to list container addresses.", err)
 		return nil, err
 	}
 
@@ -449,14 +500,23 @@ func (c *container) getPathIPs() (ips []net.IP, err error) {
 			continue
 		}
 
-		log.Debugf("Getting my route to container IP: %v", addr.IP)
+		c.log.WithFields(log.Fields{
+			"IP": addr.IP,
+		}).Debug("Getting routes to container IP")
 		srcRoutes, err := netlink.RouteGet(addr.IP)
 		if err != nil {
-			log.Error(err)
+			c.log.WithFields(log.Fields{
+				"IP":    addr.IP,
+				"Error": err,
+			}).Error("Failed to get routes to container IP")
 			continue
 		}
 		for _, srcRoute := range srcRoutes {
 			if srcRoute.Gw == nil {
+				c.log.WithFields(log.Fields{
+					"IP":  addr.IP,
+					"Src": srcRoute.Src,
+				}).Debug("Found direct route to IP from Src.")
 				ips = append(ips, srcRoute.Src)
 			}
 		}
@@ -466,20 +526,28 @@ func (c *container) getPathIPs() (ips []net.IP, err error) {
 }
 
 func (c *container) getPathIP() (net.IP, error) {
+	c.log.Debug("Getting path IP")
 	// TODO: This needs to accept a family
 	ips, err := c.getPathIPs()
 	if err != nil {
+		c.logError("Failed to get path IPs", err)
 		return nil, err
 	}
 
 	if len(ips) == 0 {
-		return nil, fmt.Errorf("No direct connection to container.")
+		err = fmt.Errorf("No direct connection to container.")
+		c.logError("No direct routes to container", err)
+		return nil, err
 	}
 
+	c.log.WithFields(log.Fields{
+		"IP": ips[0],
+	}).Debug("Returning Path IP")
 	return ips[0], nil
 }
 
 func (c *container) getRoutes() ([]netlink.Route, error) {
+	c.log.Debug("Getting container routes.")
 	if c.handle != nil {
 		return c.handle.RouteList(nil, netlink.FAMILY_ALL)
 	}
@@ -488,8 +556,12 @@ func (c *container) getRoutes() ([]netlink.Route, error) {
 }
 
 func (c *container) offsetGateways(offset int) error {
+	c.log.WithFields(log.Fields{
+		"Offset": offset,
+	}).Debug("Offsetting container gateways")
 	routes, err := c.getRoutes()
 	if err != nil {
+		c.logError("Failed to get container routes", err)
 		return err
 	}
 
@@ -499,7 +571,9 @@ func (c *container) offsetGateways(offset int) error {
 			continue
 		}
 
-		log.Debugf("Remove existing default route: %v", r)
+		c.log.WithFields(log.Fields{
+			"Route": r,
+		}).Debug("Removing existing default route")
 		err := c.handle.RouteDel(&r)
 		if err != nil {
 			return err
@@ -511,6 +585,9 @@ func (c *container) offsetGateways(offset int) error {
 			r.Priority += offset
 		}
 
+		c.log.WithFields(log.Fields{
+			"Route": r,
+		}).Debug("Adding default route with new priority")
 		err = c.handle.RouteAdd(&r)
 		if err != nil {
 			return err
