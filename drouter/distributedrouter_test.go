@@ -1,7 +1,6 @@
 package drouter
 
 import (
-	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -9,7 +8,6 @@ import (
 
 	dockerclient "github.com/docker/engine-api/client"
 	dockerTypes "github.com/docker/engine-api/types"
-	dockerCTypes "github.com/docker/engine-api/types/container"
 	dockerNTypes "github.com/docker/engine-api/types/network"
 	"golang.org/x/net/context"
 
@@ -29,6 +27,9 @@ func cleanup() {
 	}
 	for _, dn := range dockerNets {
 		if strings.HasPrefix(dn.Name, "drntest_n") {
+			for c := range dn.Containers {
+				dc.NetworkDisconnect(bg, dn.ID, c, true)
+			}
 			dc.NetworkRemove(bg, dn.ID)
 		}
 	}
@@ -93,41 +94,6 @@ func testRunClose(t *testing.T) {
 
 	if err != nil {
 		t.Errorf("Error on Run Return: %v", err)
-	}
-}
-
-const (
-	CONT_NAME  = "drntest_c%v"
-	CONT_IMAGE = "alpine"
-)
-
-func createContainer(n int, t *testing.T) string {
-	r, err := dc.ContainerCreate(bg,
-		&dockerCTypes.Config{},
-		&dockerCTypes.HostConfig{},
-		&dockerNTypes.NetworkingConfig{
-			EndpointsConfig: map[string]*dockerNTypes.EndpointSettings{
-				fmt.Sprintf(NET_NAME, n): &dockerNTypes.EndpointSettings{},
-			},
-		}, "")
-	if err != nil {
-		t.Fatalf("Error creating container: %v", err)
-	}
-
-	err = dc.ContainerStart(bg, r.ID, dockerTypes.ContainerStartOptions{})
-
-	if err != nil {
-		containerRemove(r.ID, t)
-		t.Fatalf("Error starting container: %v", err)
-	}
-
-	return r.ID
-}
-
-func containerRemove(id string, t *testing.T) {
-	err := dc.ContainerRemove(bg, id, dockerTypes.ContainerRemoveOptions{})
-	if err != nil {
-		t.Fatalf("Error removing container: %v", err)
 	}
 }
 
