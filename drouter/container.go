@@ -35,6 +35,7 @@ func newContainerFromID(id string) (*container, error) {
 	}
 	log.WithFields(log.Fields{"id": id}).Debug("Inspected container.")
 
+	log.Infof("State: %v", cjson.State.Running)
 	if !cjson.State.Running {
 		log.WithFields(log.Fields{"id": id}).Debug("Container not running.")
 		return &container{}, nil

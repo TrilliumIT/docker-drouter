@@ -22,7 +22,7 @@ const (
 	DR_INST   = "dr_test"
 )
 
-func createNetwork(n int, dr bool, t *testing.T) string {
+func createNetwork(n int, dr bool, t *testing.T) dockerTypes.NetworkResource {
 	name := fmt.Sprintf(NET_NAME, n)
 	opts := make(map[string]string)
 	if dr {
@@ -40,7 +40,10 @@ func createNetwork(n int, dr bool, t *testing.T) string {
 		},
 	})
 	require.Equal(t, err, nil, "Error creating network")
-	return r.ID
+
+	nr, err := dc.NetworkInspect(bg, r.ID)
+	require.Equal(t, err, nil, "Error inspecting network")
+	return nr
 }
 
 func removeNetwork(id string, t *testing.T) {
@@ -53,11 +56,8 @@ func removeNetwork(id string, t *testing.T) {
 func TestNetworkConnect(t *testing.T) {
 	assert := assert.New(t)
 
-	n0ID := createNetwork(0, true, t)
-	defer removeNetwork(n0ID, t)
-
-	n0r, err := dc.NetworkInspect(bg, n0ID)
-	assert.Equal(err, nil, "Error inspecting network")
+	n0r := createNetwork(0, true, t)
+	defer removeNetwork(n0r.ID, t)
 
 	hook := logtest.NewGlobal()
 	n0 := newNetwork(&n0r)
@@ -74,11 +74,8 @@ func TestIPOffset(t *testing.T) {
 	ipOffset = 2
 	defer func() { ipOffset = 0 }()
 
-	n0ID := createNetwork(0, true, t)
-	defer removeNetwork(n0ID, t)
-
-	n0r, err := dc.NetworkInspect(bg, n0ID)
-	assert.Equal(err, nil, "Error inspecting network")
+	n0r := createNetwork(0, true, t)
+	defer removeNetwork(n0r.ID, t)
 
 	hook := logtest.NewGlobal()
 	n0 := newNetwork(&n0r)
@@ -97,11 +94,8 @@ func TestNegativeIPOffset(t *testing.T) {
 	ipOffset = -1
 	defer func() { ipOffset = 0 }()
 
-	n0ID := createNetwork(0, true, t)
-	defer removeNetwork(n0ID, t)
-
-	n0r, err := dc.NetworkInspect(bg, n0ID)
-	assert.Equal(err, nil, "Error inspecting network")
+	n0r := createNetwork(0, true, t)
+	defer removeNetwork(n0r.ID, t)
 
 	hook := logtest.NewGlobal()
 	n0 := newNetwork(&n0r)
@@ -118,11 +112,8 @@ func TestNegativeIPOffset(t *testing.T) {
 func TestMultipleConnectWarn(t *testing.T) {
 	assert := assert.New(t)
 
-	n0ID := createNetwork(0, true, t)
-	defer removeNetwork(n0ID, t)
-
-	n0r, err := dc.NetworkInspect(bg, n0ID)
-	assert.Equal(err, nil, "Error inspecting network")
+	n0r := createNetwork(0, true, t)
+	defer removeNetwork(n0r.ID, t)
 
 	hook := logtest.NewGlobal()
 	n0 := newNetwork(&n0r)
@@ -144,11 +135,8 @@ func TestMultipleConnectWarn(t *testing.T) {
 func TestIsConnected(t *testing.T) {
 	assert := assert.New(t)
 
-	n0ID := createNetwork(0, true, t)
-	defer removeNetwork(n0ID, t)
-
-	n0r, err := dc.NetworkInspect(bg, n0ID)
-	assert.Equal(err, nil, "Error inspecting network")
+	n0r := createNetwork(0, true, t)
+	defer removeNetwork(n0r.ID, t)
 
 	n0 := newNetwork(&n0r)
 	hook := logtest.NewGlobal()
@@ -168,10 +156,8 @@ func TestIsConnected(t *testing.T) {
 func TestIsDrouterTrue(t *testing.T) {
 	assert := assert.New(t)
 
-	n0ID := createNetwork(0, true, t)
-	defer removeNetwork(n0ID, t)
-	n0r, err := dc.NetworkInspect(bg, n0ID)
-	assert.Equal(err, nil, "Error inspecting network")
+	n0r := createNetwork(0, true, t)
+	defer removeNetwork(n0r.ID, t)
 	n0 := newNetwork(&n0r)
 
 	assert.True(n0.isDRouter())
@@ -180,10 +166,8 @@ func TestIsDrouterTrue(t *testing.T) {
 func TestIsDrouterFalse(t *testing.T) {
 	assert := assert.New(t)
 
-	n0ID := createNetwork(0, false, t)
-	defer removeNetwork(n0ID, t)
-	n0r, err := dc.NetworkInspect(bg, n0ID)
-	assert.Equal(err, nil, "Error inspecting network")
+	n0r := createNetwork(0, false, t)
+	defer removeNetwork(n0r.ID, t)
 	n0 := newNetwork(&n0r)
 
 	assert.False(n0.isDRouter())
@@ -192,12 +176,10 @@ func TestIsDrouterFalse(t *testing.T) {
 func TestIsDrouterTransit(t *testing.T) {
 	assert := assert.New(t)
 
-	n0ID := createNetwork(0, false, t)
-	defer removeNetwork(n0ID, t)
-	transitNetID = n0ID
+	n0r := createNetwork(0, true, t)
+	defer removeNetwork(n0r.ID, t)
+	transitNetID = n0r.ID
 	defer func() { transitNetID = "" }()
-	n0r, err := dc.NetworkInspect(bg, n0ID)
-	assert.Equal(err, nil, "Error inspecting network")
 	n0 := newNetwork(&n0r)
 
 	assert.True(n0.isDRouter())
@@ -206,16 +188,14 @@ func TestIsDrouterTransit(t *testing.T) {
 func TestAdminDownNonAggressive(t *testing.T) {
 	assert := assert.New(t)
 
-	n0ID := createNetwork(0, false, t)
-	defer removeNetwork(n0ID, t)
-	transitNetID = n0ID
+	n0r := createNetwork(0, true, t)
+	defer removeNetwork(n0r.ID, t)
+	transitNetID = n0r.ID
 	defer func() { transitNetID = "" }()
-	n0r, err := dc.NetworkInspect(bg, n0ID)
-	assert.Equal(err, nil, "Error inspecting network")
 	n0 := newNetwork(&n0r)
 
 	assert.False(n0.adminDown)
-	err = n0.disconnectEvent()
+	err := n0.disconnectEvent()
 	assert.Equal(err, nil, "Error with disconnectEvent")
 	assert.False(n0.adminDown, "adminDown should be False")
 }
@@ -225,16 +205,14 @@ func TestAdminDownAggressive(t *testing.T) {
 	aggressive = true
 	defer func() { aggressive = false }()
 
-	n0ID := createNetwork(0, false, t)
-	defer removeNetwork(n0ID, t)
-	transitNetID = n0ID
+	n0r := createNetwork(0, true, t)
+	defer removeNetwork(n0r.ID, t)
+	transitNetID = n0r.ID
 	defer func() { transitNetID = "" }()
-	n0r, err := dc.NetworkInspect(bg, n0ID)
-	assert.Equal(err, nil, "Error inspecting network")
 	n0 := newNetwork(&n0r)
 
 	assert.False(n0.adminDown)
-	err = n0.disconnectEvent()
+	err := n0.disconnectEvent()
 	assert.Equal(err, nil, "Error with disconnectEvent")
 	assert.True(n0.adminDown, "adminDown should be True")
 
@@ -243,7 +221,7 @@ func TestAdminDownAggressive(t *testing.T) {
 	assert.False(n0.adminDown, "adminDown should be False")
 }
 
-func createMultiSubnetNetwork(n int, dr bool, t *testing.T) string {
+func createMultiSubnetNetwork(n int, dr bool, t *testing.T) dockerTypes.NetworkResource {
 	name := fmt.Sprintf(NET_NAME, n)
 	opts := make(map[string]string)
 	if dr {
@@ -265,7 +243,9 @@ func createMultiSubnetNetwork(n int, dr bool, t *testing.T) string {
 		},
 	})
 	require.Equal(t, err, nil, "Error creating network")
-	return r.ID
+	nr, err := dc.NetworkInspect(bg, r.ID)
+	require.Equal(t, err, nil, "Error inspecting network")
+	return nr
 }
 
 // disabled becasue bridge driver doesn't support multiple subnets
@@ -274,11 +254,8 @@ func testMultiSubnetIPOffset(t *testing.T) {
 	ipOffset = 2
 	defer func() { ipOffset = 0 }()
 
-	n0ID := createMultiSubnetNetwork(0, true, t)
-	defer removeNetwork(n0ID, t)
-
-	n0r, err := dc.NetworkInspect(bg, n0ID)
-	assert.Equal(err, nil, "Error inspecting network")
+	n0r := createMultiSubnetNetwork(0, true, t)
+	defer removeNetwork(n0r.ID, t)
 
 	hook := logtest.NewGlobal()
 	n0 := newNetwork(&n0r)
