@@ -43,31 +43,6 @@ func createNetwork(n int, dr bool, t *testing.T) string {
 	return r.ID
 }
 
-func createMultiSubnetNetwork(n int, dr bool, t *testing.T) string {
-	name := fmt.Sprintf(NET_NAME, n)
-	opts := make(map[string]string)
-	if dr {
-		opts["drouter"] = DR_INST
-	}
-	r, err := dc.NetworkCreate(bg, name, dockerTypes.NetworkCreate{
-		Options: opts,
-		IPAM: dockerNTypes.IPAM{
-			Config: []dockerNTypes.IPAMConfig{
-				dockerNTypes.IPAMConfig{
-					Subnet:  fmt.Sprintf(NET_IPNET, n*8),
-					Gateway: fmt.Sprintf(NET_GW, n*8+1),
-				},
-				dockerNTypes.IPAMConfig{
-					Subnet:  fmt.Sprintf("192.168.243.%v/29", n*8),
-					Gateway: fmt.Sprintf("192.168.243.%v", n*8+1),
-				},
-			},
-		},
-	})
-	require.Equal(t, err, nil, "Error creating network")
-	return r.ID
-}
-
 func removeNetwork(id string, t *testing.T) {
 	err := dc.NetworkRemove(bg, id)
 	if err != nil {
@@ -135,43 +110,6 @@ func TestNegativeIPOffset(t *testing.T) {
 	routes, err := netlink.RouteGet(net.ParseIP("192.168.242.1"))
 	assert.Equal(err, nil, "Error getting routes")
 	assert.True(routes[0].Src.Equal(net.ParseIP("192.168.242.6")), "IP not what was expected")
-
-	n0.disconnect()
-	checkLogs(hook.Entries, t)
-}
-
-// This test is disabled. Apparently docker doesn't accept multiple subnets anyway, despite being stored and presented as an array. Perhaps that is only for dual stack.
-func testMultiSubnetIPOffset(t *testing.T) {
-	assert := assert.New(t)
-	ipOffset = 2
-	defer func() { ipOffset = 0 }()
-
-	n0ID := createNetwork(0, true, t)
-	defer removeNetwork(n0ID, t)
-
-	n0r, err := dc.NetworkInspect(bg, n0ID)
-	assert.Equal(err, nil, "Error inspecting network")
-
-	hook := logtest.NewGlobal()
-	n0 := newNetwork(&n0r)
-	n0.connect()
-
-	routes, err := netlink.RouteGet(net.ParseIP("192.168.242.1"))
-	assert.Equal(err, nil, "Error getting routes")
-
-	ip1 := false
-	ip2 := false
-	for _, r := range routes {
-		if r.Src.Equal(net.ParseIP("192.168.242.2")) {
-			ip1 = true
-		}
-		if r.Src.Equal(net.ParseIP("192.168.243.2")) {
-			ip2 = true
-		}
-	}
-
-	assert.True(ip1, "First ip not set")
-	assert.True(ip2, "Second ip not set")
 
 	n0.disconnect()
 	checkLogs(hook.Entries, t)
@@ -263,4 +201,106 @@ func TestIsDrouterTransit(t *testing.T) {
 	n0 := newNetwork(&n0r)
 
 	assert.True(n0.isDRouter())
+}
+
+func TestAdminDownNonAggressive(t *testing.T) {
+	assert := assert.New(t)
+
+	n0ID := createNetwork(0, false, t)
+	defer removeNetwork(n0ID, t)
+	transitNetID = n0ID
+	defer func() { transitNetID = "" }()
+	n0r, err := dc.NetworkInspect(bg, n0ID)
+	assert.Equal(err, nil, "Error inspecting network")
+	n0 := newNetwork(&n0r)
+
+	assert.False(n0.adminDown)
+	err = n0.disconnectEvent()
+	assert.Equal(err, nil, "Error with disconnectEvent")
+	assert.False(n0.adminDown, "adminDown should be False")
+}
+
+func TestAdminDownAggressive(t *testing.T) {
+	assert := assert.New(t)
+	aggressive = true
+	defer func() { aggressive = false }()
+
+	n0ID := createNetwork(0, false, t)
+	defer removeNetwork(n0ID, t)
+	transitNetID = n0ID
+	defer func() { transitNetID = "" }()
+	n0r, err := dc.NetworkInspect(bg, n0ID)
+	assert.Equal(err, nil, "Error inspecting network")
+	n0 := newNetwork(&n0r)
+
+	assert.False(n0.adminDown)
+	err = n0.disconnectEvent()
+	assert.Equal(err, nil, "Error with disconnectEvent")
+	assert.True(n0.adminDown, "adminDown should be True")
+
+	err = n0.connectEvent()
+	assert.Equal(err, nil, "Error with connectEvent")
+	assert.False(n0.adminDown, "adminDown should be False")
+}
+
+func createMultiSubnetNetwork(n int, dr bool, t *testing.T) string {
+	name := fmt.Sprintf(NET_NAME, n)
+	opts := make(map[string]string)
+	if dr {
+		opts["drouter"] = DR_INST
+	}
+	r, err := dc.NetworkCreate(bg, name, dockerTypes.NetworkCreate{
+		Options: opts,
+		IPAM: dockerNTypes.IPAM{
+			Config: []dockerNTypes.IPAMConfig{
+				dockerNTypes.IPAMConfig{
+					Subnet:  fmt.Sprintf(NET_IPNET, n*8),
+					Gateway: fmt.Sprintf(NET_GW, n*8+1),
+				},
+				dockerNTypes.IPAMConfig{
+					Subnet:  fmt.Sprintf("192.168.243.%v/29", n*8),
+					Gateway: fmt.Sprintf("192.168.243.%v", n*8+1),
+				},
+			},
+		},
+	})
+	require.Equal(t, err, nil, "Error creating network")
+	return r.ID
+}
+
+// disabled becasue bridge driver doesn't support multiple subnets
+func testMultiSubnetIPOffset(t *testing.T) {
+	assert := assert.New(t)
+	ipOffset = 2
+	defer func() { ipOffset = 0 }()
+
+	n0ID := createMultiSubnetNetwork(0, true, t)
+	defer removeNetwork(n0ID, t)
+
+	n0r, err := dc.NetworkInspect(bg, n0ID)
+	assert.Equal(err, nil, "Error inspecting network")
+
+	hook := logtest.NewGlobal()
+	n0 := newNetwork(&n0r)
+	n0.connect()
+
+	routes, err := netlink.RouteGet(net.ParseIP("192.168.242.1"))
+	assert.Equal(err, nil, "Error getting routes")
+
+	ip1 := false
+	ip2 := false
+	for _, r := range routes {
+		if r.Src.Equal(net.ParseIP("192.168.242.2")) {
+			ip1 = true
+		}
+		if r.Src.Equal(net.ParseIP("192.168.243.2")) {
+			ip2 = true
+		}
+	}
+
+	assert.True(ip1, "First ip not set")
+	assert.True(ip2, "Second ip not set")
+
+	n0.disconnect()
+	checkLogs(hook.Entries, t)
 }
