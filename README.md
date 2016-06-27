@@ -2,8 +2,6 @@
 
 This container provides a distributed router for docker containers.
 
-[![Coverage Status](https://coveralls.io/repos/github/TrilliumIT/docker-drouter/badge.svg?branch=tests)](https://coveralls.io/github/TrilliumIT/docker-drouter?branch=tests)
-
 ## Use Case
 
 docker-drouter is a container that is designed to run on a set of hosts with the [docker-vxlan-plugin](https://github.com/TrilliumIT/docker-vxlan-plugin) in `global` mode. The container will dynamically discover and connect to all existing vxlans in your cluster, adjust the routing tables for your containers, and enable routing between vxlans, always taking the shortest path to get to the destination. Currently, with docker-drouter, an external gateway with access to each vxlan is still required for routing outside of your container cluster.
@@ -56,3 +54,6 @@ Use a specific network for p2p communication. Default is 172.29.255.252/30.
 
 * Implement passive mode: Dynamically join vxlans only when sibling containers are actually running on those vxlans, rather than joining everything.
 * Implement default gateway mode: Allowing drouter to exit the container cluster through the host's default route. Optionally with masquerading. (A drop in replacement for Docker Overlay, without mutli-homed containers)
+
+[![Coverage Status](https://coveralls.io/repos/github/TrilliumIT/docker-drouter/badge.svg?branch=defaultRoute)](https://coveralls.io/github/TrilliumIT/docker-drouter?branch=defaultRoute)
+
