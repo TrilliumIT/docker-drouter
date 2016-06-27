@@ -15,12 +15,13 @@ import (
 )
 
 type network struct {
-	Name      string
-	ID        string
-	IPAM      dockernetworks.IPAM
-	Options   map[string]string
-	log       *log.Entry
-	adminDown bool
+	Name        string
+	ID          string
+	IPAM        dockernetworks.IPAM
+	Options     map[string]string
+	log         *log.Entry
+	connectLock sync.RWMutex
+	adminDown   bool
 }
 
 func newNetwork(n *dockertypes.NetworkResource) *network {
@@ -46,6 +47,8 @@ func (n *network) logError(msg string, err error) {
 
 //connects to a drNetwork
 func (n *network) connect() {
+	n.connectLock.Lock()
+	defer n.connectLock.Unlock()
 	n.log.Debug("Connecting to network")
 
 	endpointSettings := &dockernetworks.EndpointSettings{}
@@ -102,6 +105,8 @@ func (n *network) connect() {
 
 //disconnects from this drNetwork
 func (n *network) disconnect() {
+	n.connectLock.Lock()
+	defer n.connectLock.Unlock()
 	n.log.Debug("Disconnecting from network")
 	n.removeRoutes()
 
@@ -115,6 +120,8 @@ func (n *network) disconnect() {
 }
 
 func (n *network) isConnected() bool {
+	n.connectLock.RLock()
+	defer n.connectLock.RUnlock()
 	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
 	if err != nil {
 		n.logError("Failed to get routes.", err)
@@ -170,34 +177,34 @@ func (n *network) disconnectEvent() error {
 func (n *network) removeRoutes() {
 	var routeDelWG sync.WaitGroup
 	for _, ic := range n.IPAM.Config {
-		_, sn, err := net.ParseCIDR(ic.Subnet)
-		if err != nil {
-			n.log.WithFields(log.Fields{
-				"Subnet": ic.Subnet,
-				"Error":  err,
-			}).Error("Failed to parse subnet.")
-			continue
-		}
-		coveredByStatic := subnetCoveredByStatic(sn)
-
-		//remove host shortcut routes
-		if hostShortcut && !coveredByStatic {
-			n.log.WithFields(log.Fields{
-				"Subnet": sn,
-			}).Debug("Asynchronously deleting host routes to subnet.")
-			routeDelWG.Add(1)
-			go func() {
-				defer routeDelWG.Done()
-				p2p.delHostRoute(sn)
-			}()
-		}
-
-		n.log.WithFields(log.Fields{
-			"Subnet": sn,
-		}).Debug("Asynchronously deleting routes to subnet from all containers.")
 		routeDelWG.Add(1)
 		go func() {
 			defer routeDelWG.Done()
+			_, sn, err := net.ParseCIDR(ic.Subnet)
+			if err != nil {
+				n.log.WithFields(log.Fields{
+					"Subnet": ic.Subnet,
+					"Error":  err,
+				}).Error("Failed to parse subnet.")
+				return
+			}
+			coveredByStatic := subnetCoveredByStatic(sn)
+
+			//remove host shortcut routes
+			if hostShortcut && !coveredByStatic {
+				routeDelWG.Add(1)
+				go func() {
+					defer routeDelWG.Done()
+					n.log.WithFields(log.Fields{
+						"Subnet": sn,
+					}).Debug("Deleting host routes to subnet.")
+					p2p.delHostRoute(sn)
+				}()
+			}
+
+			n.log.WithFields(log.Fields{
+				"Subnet": sn,
+			}).Debug("Deleting routes to subnet from all containers.")
 			modifyRoute(nil, sn, DEL_ROUTE)
 		}()
 	}

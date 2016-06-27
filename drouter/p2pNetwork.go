@@ -220,18 +220,18 @@ Hroutes:
 
 	var hostRouteWG sync.WaitGroup
 	for _, sr := range staticRoutes {
-		if iputil.SubnetContainsSubnet(hroute.Dst, sr) {
-			p2pnet.log.WithFields(log.Fields{
-				"Subnet": sr,
-			}).Debug("Skipping static route to subnet covered by underlay")
-			continue
-		}
-		p2pnet.log.WithFields(log.Fields{
-			"Subnet": sr,
-		}).Debug("Asynchronously adding host route to subnet.")
-		hostRouteWG.Add(1)
 		go func() {
 			defer hostRouteWG.Done()
+			if iputil.SubnetContainsSubnet(hroute.Dst, sr) {
+				p2pnet.log.WithFields(log.Fields{
+					"Subnet": sr,
+				}).Debug("Skipping static route to subnet covered by underlay")
+				return
+			}
+			p2pnet.log.WithFields(log.Fields{
+				"Subnet": sr,
+			}).Debug("Asynchronously adding host route to subnet.")
+			hostRouteWG.Add(1)
 			p2pnet.addHostRoute(sr)
 		}()
 	}
