@@ -49,6 +49,9 @@ func (n *network) logError(msg string, err error) {
 func (n *network) connect() {
 	n.connectLock.Lock()
 	defer n.connectLock.Unlock()
+	if isConnected(n) {
+		return
+	}
 	n.log.Debug("Connecting to network")
 
 	endpointSettings := &dockernetworks.EndpointSettings{}
@@ -90,6 +93,7 @@ func (n *network) connect() {
 	//connect to network
 	err := dockerClient.NetworkConnect(context.Background(), n.ID, selfContainerID, endpointSettings)
 	if err != nil {
+		// this should never happen, we already checked for it.
 		if strings.Contains(err.Error(), "already exists") {
 			n.log.WithFields(log.Fields{
 				"Error": err,
@@ -107,6 +111,10 @@ func (n *network) connect() {
 func (n *network) disconnect() {
 	n.connectLock.Lock()
 	defer n.connectLock.Unlock()
+	if !isConnected(n) {
+		return
+	}
+
 	n.log.Debug("Disconnecting from network")
 	n.removeRoutes()
 
@@ -122,6 +130,10 @@ func (n *network) disconnect() {
 func (n *network) isConnected() bool {
 	n.connectLock.RLock()
 	defer n.connectLock.RUnlock()
+	return isConnected(n)
+}
+
+func isConnected(n *network) bool {
 	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
 	if err != nil {
 		n.logError("Failed to get routes.", err)
