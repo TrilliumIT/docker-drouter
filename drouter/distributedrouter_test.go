@@ -20,6 +20,10 @@ var (
 	bg context.Context
 )
 
+const (
+	DR_INST = "dr_test"
+)
+
 func cleanup() {
 	dockerNets, err := dc.NetworkList(bg, dockerTypes.NetworkListOptions{})
 	if err != nil {
@@ -78,15 +82,10 @@ func testRunClose(t *testing.T) {
 		ech <- Run(opts, quit)
 	}()
 
-	timeoutCh := make(chan struct{})
-	go func() {
-		time.Sleep(10 * time.Second)
-		close(timeoutCh)
-	}()
-
+	timeout := time.NewTimer(10 * time.Second)
 	var err error
 	select {
-	case _ = <-timeoutCh:
+	case _ = <-timeout.C:
 		close(quit)
 		err = <-ech
 	case err = <-ech:
