@@ -333,13 +333,13 @@ Main:
 	var disconnectWG sync.WaitGroup
 	//leave all connected networks
 	for _, drn := range dr.networks {
-		// checking isConnected will automatically wait for any pending connections
-		if !drn.isConnected() {
-			continue
-		}
 		disconnectWG.Add(1)
 		go func(drn *network) {
 			defer disconnectWG.Done()
+			// checking isConnected will automatically wait for any pending connections
+			if !drn.isConnected() {
+				return
+			}
 			drn.disconnect()
 		}(drn)
 	}
