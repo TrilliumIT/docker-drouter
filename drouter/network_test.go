@@ -19,7 +19,6 @@ const (
 	NET_NAME  = "drntest_n%v"
 	NET_GW    = "192.168.242.%v"
 	NET_IPNET = "192.168.242.%v/29"
-	DR_INST   = "dr_test"
 )
 
 func createNetwork(n int, dr bool, t *testing.T) dockerTypes.NetworkResource {
