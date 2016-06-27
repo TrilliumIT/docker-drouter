@@ -3,8 +3,11 @@ FROM golang:1.6.2-wheezy
 MAINTAINER Trillium IT <webmaster@trilliumit.com>
 
 ENV GO15VENDOREXPERIMENT 1
+ENV GOOS=linux
 
 RUN go get github.com/Masterminds/glide
+RUN go get github.com/mattn/goveralls
+RUN go get golang.org/x/tools/cmd/cover
 
 ENV SRC_ROOT /go/src/github.com/TrilliumIT/docker-drouter 
 
@@ -16,6 +19,5 @@ WORKDIR ${SRC_ROOT}
 # Used to only go get if sources change.
 ADD . ${SRC_ROOT}/
 RUN $GOPATH/bin/glide install
-RUN go get $($GOPATH/bin/glide novendor)
 
-ENTRYPOINT ["/go/bin/docker-drouter"]
+ENTRYPOINT ["sh", "-c"]

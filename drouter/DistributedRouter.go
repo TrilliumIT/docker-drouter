@@ -29,11 +29,11 @@ var (
 	staticRoutes     []*net.IPNet
 	transitNetName   string
 	selfContainerID  string
+	instanceName     string
 
 	//other globals
 	dockerClient *dockerclient.Client
 	transitNetID string
-	connectWG    sync.WaitGroup
 	stopChan     <-chan struct{}
 )
 
@@ -48,6 +48,7 @@ type DistributedRouterOptions struct {
 	P2PAddr          string
 	StaticRoutes     []string
 	TransitNet       string
+	InstanceName     string
 }
 
 type distributedRouter struct {
@@ -55,8 +56,9 @@ type distributedRouter struct {
 	defaultRoute net.IP
 }
 
-func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter, error) {
+func initVars(options *DistributedRouterOptions) error {
 	var err error
+
 	//set global vars from options
 	ipOffset = options.IPOffset
 	aggressive = options.Aggressive
@@ -64,34 +66,37 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	containerGateway = options.ContainerGateway
 	hostGateway = options.HostGateway
 	masquerade = options.Masquerade
+	instanceName = options.InstanceName
+	transitNetName = options.TransitNet
+
+	if !aggressive && len(transitNetName) == 0 {
+		log.Warn("Detected --no-aggressive and --transit-net was not found. This router may not be able to route to networks on other hosts")
+	}
+
+	//get the pid of drouter
+	if os.Getpid() == 1 {
+		return fmt.Errorf("Running as pid 1. Running with --pid=host required.")
+	}
+
 	//staticRoutes
 	for _, sr := range options.StaticRoutes {
 		_, cidr, err := net.ParseCIDR(sr)
 		if err != nil {
-			log.Errorf("Failed to parse static route: %v", sr)
+			log.WithFields(log.Fields{
+				"Subnet": sr,
+				"Error":  err,
+			}).Error("Failed to parse static route subnet.")
 			continue
 		}
 		staticRoutes = append(staticRoutes, cidr)
-	}
-
-	transitNetName = options.TransitNet
-
-	if !aggressive && len(transitNetName) == 0 {
-		return &distributedRouter{}, fmt.Errorf("Detected --no-aggressive, and --transit-net was not found.")
-	}
-
-	//get the pid of drouter
-	pid := os.Getpid()
-	if pid == 1 {
-		return &distributedRouter{}, fmt.Errorf("Running as pid 1. Running with --pid=host required.")
 	}
 
 	//get docker client
 	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
 	dockerClient, err = dockerclient.NewClient("unix:///var/run/docker.sock", "v1.23", nil, defaultHeaders)
 	if err != nil {
-		log.Error("Error connecting to docker socket")
-		return &distributedRouter{}, err
+		logError("Error connecting to docker socket", err)
+		return err
 	}
 
 	//process options for assumptions and validity
@@ -110,19 +115,34 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	sc, err := getSelfContainer()
 	if err != nil {
 		log.Error("Failed to getSelfContainer(). I am running in a container, right?.")
-		return nil, err
+		return err
 	}
 	selfContainerID = sc.ID
 
 	//disconnect from all initial networks
 	log.Debug("Leaving all connected currently networks.")
 	for name, settings := range sc.NetworkSettings.Networks {
-		log.Debugf("Leaving network: %v", name)
+		log.WithFields(log.Fields{
+			"Network": name,
+		}).Debug("Leaving network.")
 		err = dockerClient.NetworkDisconnect(context.Background(), settings.NetworkID, selfContainerID, true)
 		if err != nil {
-			log.Error(err)
+			log.WithFields(log.Fields{
+				"Network": name,
+				"Error":   err,
+			}).Error("Failed to leave network.")
 			continue
 		}
+	}
+	return nil
+
+}
+
+func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter, error) {
+
+	err := initVars(options)
+	if err != nil {
+		return &distributedRouter{}, err
 	}
 
 	//create our distributedRouter object
@@ -193,32 +213,29 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 					//get all networks from docker
 					dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
 					if err != nil {
-						log.Error("Error getting network list")
-						log.Error(err)
+						logError("Error getting network list", err)
 					}
 
 					//learn the docker networks
 					for _, dn := range dockerNets {
-						if dn.ID == transitNetID {
-							continue
-						}
+						go func() {
+							if dn.ID == transitNetID {
+								return
+							}
 
-						//do we know about this network already?
-						drn, ok := dr.networks[dn.ID]
-						if !ok {
-							drn = newNetwork(&dn)
-							learnNetwork <- drn
-						}
+							//do we know about this network already?
+							drn, ok := dr.networks[dn.ID]
+							if !ok {
+								drn = newNetwork(&dn)
+								learnNetwork <- drn
+							}
 
-						if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-							connectWG.Add(1)
-							go func() {
-								defer connectWG.Done()
+							// this will automatically wait for pending connections, no need to wait in main loop
+							if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
 								drn.connect()
-							}()
-						}
+							}
+						}()
 					}
-					connectWG.Wait()
 					//use timer instead of ticker to guarantee a 5 second delay from end to start
 					timer = time.NewTimer(5 * time.Second)
 				}
@@ -228,6 +245,29 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 
 	dockerEvent := make(chan dockerevents.Message)
 	defer close(dockerEvent)
+	// on startup generate connect events for every container
+	dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
+	if err != nil {
+		logError("Error getting network list", err)
+		return err
+	}
+	for _, dn := range dockerNets {
+		for c, _ := range dn.Containers {
+			go func() {
+				dockerEvent <- dockerevents.Message{
+					Type:   "network",
+					Action: "connect",
+					Actor: dockerevents.Actor{
+						ID: dn.ID,
+						Attributes: map[string]string{
+							"container": c,
+						},
+					},
+				}
+			}()
+		}
+	}
+	// subscribe to real docker events
 	dockerEventErr := events.Monitor(context.Background(), dockerClient, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
 		dockerEvent <- event
 		return
@@ -239,10 +279,11 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 	defer close(routeEvent)
 	err = netlink.RouteSubscribe(routeEvent, routeEventDone)
 	if err != nil {
-		log.Error("Failed to subscribe to drouter routing table.")
+		logError("Failed to subscribe to drouter routing table.", err)
 		return err
 	}
 
+	var eventWG sync.WaitGroup
 Main:
 	for {
 		select {
@@ -252,60 +293,65 @@ Main:
 				dr.networks[drn.ID] = drn
 			}
 		case e := <-dockerEvent:
-			err = dr.processDockerEvent(e, learnNetwork)
-			if err != nil {
-				log.Error(err)
-			}
+			eventWG.Add(1)
+			go func() {
+				defer eventWG.Done()
+				err = dr.processDockerEvent(e, learnNetwork)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"Event": e,
+						"Error": err,
+					}).Error("Failed to process docker event")
+				}
+			}()
 		case r := <-routeEvent:
-			if r.Type != syscall.RTM_NEWROUTE {
-				break
-			}
-			err = dr.processRouteAddEvent(&r)
-			if err != nil {
-				log.Error(err)
-			}
+			eventWG.Add(1)
+			go func() {
+				defer eventWG.Done()
+				if r.Type != syscall.RTM_NEWROUTE {
+					return
+				}
+				err = dr.processRouteAddEvent(&r)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"RouteEvent": r,
+						"Error":      err,
+					}).Error("Failed to process route add event")
+				}
+			}()
 		case e := <-dockerEventErr:
-			log.Error(e)
+			logError("Error recieved from Docker Event Subscription.", e)
 		case _ = <-shutdown:
+			log.Debug("Shutdown request recieved")
 			break Main
 		}
 	}
 
 	log.Info("Cleaning Up")
-	connectWG.Wait()
+	eventWG.Wait()
 
 	var disconnectWG sync.WaitGroup
 	//leave all connected networks
 	for _, drn := range dr.networks {
-		if !drn.isConnected() {
-			continue
-		}
 		disconnectWG.Add(1)
 		go func(drn *network) {
 			defer disconnectWG.Done()
+			// checking isConnected will automatically wait for any pending connections
+			if !drn.isConnected() {
+				return
+			}
 			drn.disconnect()
 		}(drn)
 	}
 
-	disconnectWait := make(chan struct{})
-	go func() {
-		defer close(disconnectWait)
-		disconnectWG.Wait()
-	}()
-
-Done:
-	for {
-		select {
-		case _ = <-disconnectWait:
-			log.Debug("Finished all network disconnects.")
-			break Done
-		}
-	}
+	disconnectWG.Wait()
+	log.Debug("Finished all network disconnects.")
 
 	//delete the p2p link
 	if hostShortcut {
 		err := p2p.remove()
 		if err != nil {
+			logError("Failed to remove p2p link.", err)
 			return err
 		}
 	}

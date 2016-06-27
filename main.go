@@ -107,6 +107,7 @@ func Run(ctx *cli.Context) error {
 		P2PAddr:          ctx.String("p2p-net"),
 		StaticRoutes:     ctx.StringSlice("static-route"),
 		TransitNet:       ctx.String("transit-net"),
+		InstanceName:     ctx.String("drouter-instance"),
 	}
 
 	quit := make(chan struct{})
@@ -122,7 +123,7 @@ func Run(ctx *cli.Context) error {
 
 	err := drouter.Run(opts, quit)
 	if err != nil {
-		log.Error(err)
+		log.WithFields(log.Fields{"Error": err}).Error("Error running drouter.")
 		return err
 	}
 
