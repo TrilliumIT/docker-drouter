@@ -62,6 +62,26 @@ func main() {
 		Name:  "transit-net",
 		Usage: "Set a transit network for drouter to always connect to. Network should have 'drouter' option set. If network has a gateway, and --host-gateway=false, drouter's default gateway will be through this network's gateway. (this option is required with --no-aggressive)",
 	}
+
+	if flagNoAggressive {
+		panic("Sorry, --no-aggressive mode is not supported yet.")
+	}
+	if flagHostShortcut {
+		panic("Sorry, --host-shortcut mode is not supported yet.")
+	}
+	if flagContainerGateway {
+		panic("Sorry, --container-gateway mode is not supported yet.")
+	}
+	if flagHostGateway {
+		panic("Sorry, --host-gateway mode is not supported yet.")
+	}
+	if flagMasquerade {
+		panic("Sorry, --masquerade mode is not supported yet.")
+	}
+	if flagTransitNet != "" {
+		panic("Sorry, --transit-net is not supported yet.")
+	}
+
 	app := cli.NewApp()
 	app.Name = "docker-drouter"
 	app.Usage = "Docker Distributed Router"
