@@ -1,23 +1,30 @@
 package drouter
 
 import (
+	"fmt"
+	"net"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/TrilliumIT/iputil"
 	dockerclient "github.com/docker/engine-api/client"
 	dockerTypes "github.com/docker/engine-api/types"
 	dockerNTypes "github.com/docker/engine-api/types/network"
 	"golang.org/x/net/context"
 
 	log "github.com/Sirupsen/logrus"
+	logtest "github.com/Sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/vishvananda/netlink"
 )
 
 var (
-	dc *dockerclient.Client
-	bg context.Context
+	dc       *dockerclient.Client
+	bg       context.Context
+	testNets []*net.IPNet
 )
 
 const (
@@ -55,6 +62,11 @@ func TestMain(m *testing.M) {
 	bg = context.Background()
 
 	cleanup()
+
+	testNets = make([]*net.IPNet, 4)
+	for i, n := range testNets {
+		_, n, _ := net.ParseCIDR(fmt.Sprintf(NET_IPNET, i*8))
+	}
 
 	exitStatus = m.Run()
 
@@ -94,6 +106,106 @@ func testRunClose(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error on Run Return: %v", err)
 	}
+}
+
+func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+	hook := logtest.NewGlobal()
+
+	n0r := createNetwork(0, false, t)
+	defer removeNetwork(n0r.ID, t)
+	n1r := createNetwork(1, true, t)
+	defer removeNetwork(n1r.ID, t)
+	n2r := createNetwork(2, true, t)
+	defer removeNetwork(n2r.ID, t)
+
+	c0 := createContainer(n0r.Name, t)
+	defer removeContainer(c0, t)
+	c1 := createContainer(n1r.Name, t)
+	defer removeContainer(c1, t)
+
+	quit := make(chan struct{})
+	ech := make(chan error)
+	go func() {
+		ech <- Run(opts, quit)
+	}()
+
+	startDelay := time.NewTimer(10 * time.Second)
+	var err error
+	select {
+	case _ = <-startDelay.C:
+		err = nil
+	case err = <-ech:
+	}
+
+	require.Equal(err, nil, "Run() returned an error.")
+	checkLogs(hook.Entries, t)
+
+	for _, e := range hook.Entries {
+		if e.Level >= log.InfoLevel {
+			continue
+		}
+
+		if d, ok := e.Data["container"]; ok {
+			assert.NotEqual(d["ID"], c0, "There should be no >= INFO logs for c0.")
+		}
+	}
+
+	c1c, err := newContainerFromID(c1)
+	assert.Equal(err, nil, "Failed to create c1.")
+
+	if aggressive {
+		assert.True(handleContainsRoute(c1c.handle, testNets[2], nil, t), "c1 should have a route to n2.")
+	}
+
+	c2 := createContainer(n2r.Name, t)
+	defer removeContainer(c2, t)
+	time.Sleep(5 * time.Second)
+
+	checkLogs(hook.Entries, t)
+
+	assert.False(handleContainsRoute(c1c.handle, testNets[0], nil, t), "c1 should not have a route to n0.")
+	assert.True(handleContainsRoute(c1c.handle, testNets[2], nil, t), "c1 should have a route to n2.")
+
+	c2c, err := newContainerFromID(c1)
+	assert.Equal(err, nil, "Failed to create c2.")
+
+	assert.False(handleContainsRoute(c2c.handle, testNets[0], nil, t), "c2 should not have a route to n0.")
+	assert.True(handleContainsRoute(c2c.handle, testNets[1], nil, t), "c2 should have a route to n1.")
+
+	n3r := createNetwork(3, true, t)
+	defer removeNetwork(n3r.ID, t)
+
+	//only sleep if aggressive to give drouter time to connect to those networks
+	if aggressive {
+		time.Sleep(10 * time.Second)
+		assert.True(handleContainsRoute(c1c.handle, testNets[3], nil, t), "c1 should have a route to n3.")
+		assert.True(handleContainsRoute(c2c.handle, testNets[3], nil, t), "c2 should have a route to n3.")
+	} else {
+		assert.False(handleContainsRoute(c1c.handle, testNets[3], nil, t), "c1 should not have a route to n3 yet.")
+		assert.False(handleContainsRoute(c2c.handle, testNets[3], nil, t), "c2 should not have a route to n3 yet.")
+	}
+
+	close(quit)
+}
+
+func handleContainsRoute(h *netlink.Handle, to *net.IPNet, via *net.IP, t *testing.T) bool {
+	require := require.New(t)
+
+	routes, err := h.RouteList(nil, netlink.FAMILY_ALL)
+	require.Equal(err, nil, "Failed to get routes from handle.")
+
+	for _, r := range routes {
+		if r.Dst == nil || r.Gw == nil {
+			continue
+		}
+
+		if iputil.SubnetEqualSubnet(r.Dst, to) && (via == nil || r.Gw.Equal(*via)) {
+			return true
+		}
+	}
+	return false
 }
 
 /*
