@@ -192,6 +192,7 @@ func (c *container) addRouteVia(sn *net.IPNet, gateway net.IP) {
 		Gw:  gateway,
 	}
 
+	//Test checks for this message. Change with caution.
 	c.log.WithFields(log.Fields{
 		"Subnet":  sn,
 		"Gateway": gateway,
