@@ -110,8 +110,6 @@ func TestNegativeIPOffset(t *testing.T) {
 }
 
 func TestMultipleConnectWarn(t *testing.T) {
-	assert := assert.New(t)
-
 	n0r := createNetwork(0, true, t)
 	defer removeNetwork(n0r.ID, t)
 
@@ -122,14 +120,8 @@ func TestMultipleConnectWarn(t *testing.T) {
 	checkLogs(hook.Entries, t)
 
 	n0.connect()
-
-	warned := 0
-	for _, e := range hook.Entries {
-		if e.Level == log.WarnLevel {
-			warned += 1
-		}
-	}
-	assert.Equal(warned, 1, "Expected to be warned once")
+	// we should not get warnings anymore
+	checkLogs(hook.Entries, t)
 }
 
 func TestIsConnected(t *testing.T) {
