@@ -4,6 +4,7 @@ services:
 
 before_install:
   - sudo apt-get -o Dpkg::Options::="--force-confnew" install -y docker-engine
+  - docker pull alpine
   - docker build -t droutertest -f ./Dockertest .
 
 script:

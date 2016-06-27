@@ -49,13 +49,6 @@ func TestMain(m *testing.M) {
 	}
 	dc = dockerClient
 	bg = context.Background()
-	p, err := dc.ImagePull(bg, "alpine", dockerTypes.ImagePullOptions{})
-	if err != nil {
-		log.WithFields(log.Fields{
-			"Error": err,
-		}).Fatal("Failed to pull alpine image")
-	}
-	p.Close()
 
 	cleanup()
 
