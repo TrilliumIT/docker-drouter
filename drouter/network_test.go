@@ -60,10 +60,10 @@ func TestNetworkConnect(t *testing.T) {
 
 	hook := logtest.NewGlobal()
 	n0 := newNetwork(&n0r)
+
 	n0.connect()
-	for _, e := range hook.Entries {
-		assert.Equal(log.DebugLevel, e.Level, "All messages should be debug")
-	}
+	checkLogs(hook.Entries, t)
+
 	n0.disconnect()
 	checkLogs(hook.Entries, t)
 }
