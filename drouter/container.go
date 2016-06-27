@@ -5,6 +5,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/TrilliumIT/iputil"
@@ -79,13 +80,18 @@ func (c *container) addAllRoutes() error {
 		return nil
 	}
 
+	var routeAddWG sync.WaitGroup
 	//Loop through all static routes, ensure each one is installed in the container
 	//add routes for all the static routes
 	for i, sr := range staticRoutes {
 		if i == 0 {
 			c.log.Info("Syncing static routes")
 		}
-		go c.addRoute(sr)
+		routeAddWG.Add(1)
+		go func() {
+			defer routeAddWG.Done()
+			c.addRoute(sr)
+		}()
 	}
 
 	//Loop through all discovered networks, ensure each one is installed in the container
@@ -144,9 +150,14 @@ Subnets:
 		c.log.WithFields(log.Fields{
 			"Destination": r.Dst,
 		}).Debug("Adding route")
-		go c.addRoute(r.Dst)
+		routeAddWG.Add(1)
+		go func() {
+			defer routeAddWG.Done()
+			c.addRoute(r.Dst)
+		}()
 	}
 
+	routeAddWG.Wait()
 	return nil
 }
 
@@ -372,11 +383,7 @@ func (c *container) connectEvent(drn *network) error {
 		c.log.WithFields(log.Fields{
 			"network": drn,
 		}).Debug("Network not connected, connecting asynchronously.")
-		connectWG.Add(1)
-		go func() {
-			defer connectWG.Done()
-			drn.connect()
-		}()
+		drn.connect()
 		//return now because the routeEvent will trigger routes to be installed in this container
 		return nil
 	}
@@ -386,7 +393,7 @@ func (c *container) connectEvent(drn *network) error {
 		c.log.WithFields(log.Fields{
 			"network": drn,
 		}).Debug("Asynchronously replacing container gateway.")
-		go c.replaceGateway()
+		c.replaceGateway()
 		return nil
 	}
 
@@ -403,7 +410,7 @@ func (c *container) connectEvent(drn *network) error {
 	}
 
 	c.log.Debug("Asynchronously adding all routes to container.")
-	go c.addAllRoutes()
+	c.addAllRoutes()
 	return nil
 }
 
@@ -434,10 +441,6 @@ func (c *container) disconnectEvent(drn *network) error {
 	if aggressive {
 		return nil
 	}
-
-	//if not aggressive mode, then we disconnect from the network if this is the last connected container
-	c.log.Debug("Waiting on any pending connections")
-	connectWG.Wait()
 
 	//loop through all the containers
 	dockerContainers, err := dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
@@ -474,8 +477,8 @@ func (c *container) disconnectEvent(drn *network) error {
 	default:
 		c.log.WithFields(log.Fields{
 			"network": drn,
-		}).Debug("Asynchronously disconnecting from network.")
-		go drn.disconnect()
+		}).Debug("Disconnecting from network.")
+		drn.disconnect()
 	}
 
 	return nil

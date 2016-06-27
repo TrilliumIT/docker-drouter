@@ -34,7 +34,6 @@ var (
 	//other globals
 	dockerClient *dockerclient.Client
 	transitNetID string
-	connectWG    sync.WaitGroup
 	stopChan     <-chan struct{}
 )
 
@@ -219,26 +218,24 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 
 					//learn the docker networks
 					for _, dn := range dockerNets {
-						if dn.ID == transitNetID {
-							continue
-						}
+						go func() {
+							if dn.ID == transitNetID {
+								return
+							}
 
-						//do we know about this network already?
-						drn, ok := dr.networks[dn.ID]
-						if !ok {
-							drn = newNetwork(&dn)
-							learnNetwork <- drn
-						}
+							//do we know about this network already?
+							drn, ok := dr.networks[dn.ID]
+							if !ok {
+								drn = newNetwork(&dn)
+								learnNetwork <- drn
+							}
 
-						if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-							connectWG.Add(1)
-							go func() {
-								defer connectWG.Done()
+							// this will automatically wait for pending connections, no need to wait in main loop
+							if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
 								drn.connect()
-							}()
-						}
+							}
+						}()
 					}
-					connectWG.Wait()
 					//use timer instead of ticker to guarantee a 5 second delay from end to start
 					timer = time.NewTimer(5 * time.Second)
 				}
@@ -286,6 +283,7 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 		return err
 	}
 
+	var eventWG sync.WaitGroup
 Main:
 	for {
 		select {
@@ -295,24 +293,32 @@ Main:
 				dr.networks[drn.ID] = drn
 			}
 		case e := <-dockerEvent:
-			err = dr.processDockerEvent(e, learnNetwork)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"Event": e,
-					"Error": err,
-				}).Error("Failed to process docker event")
-			}
+			eventWG.Add(1)
+			go func() {
+				defer eventWG.Done()
+				err = dr.processDockerEvent(e, learnNetwork)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"Event": e,
+						"Error": err,
+					}).Error("Failed to process docker event")
+				}
+			}()
 		case r := <-routeEvent:
-			if r.Type != syscall.RTM_NEWROUTE {
-				break
-			}
-			err = dr.processRouteAddEvent(&r)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"RouteEvent": r,
-					"Error":      err,
-				}).Error("Failed to process route add event")
-			}
+			eventWG.Add(1)
+			go func() {
+				defer eventWG.Done()
+				if r.Type != syscall.RTM_NEWROUTE {
+					return
+				}
+				err = dr.processRouteAddEvent(&r)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"RouteEvent": r,
+						"Error":      err,
+					}).Error("Failed to process route add event")
+				}
+			}()
 		case e := <-dockerEventErr:
 			logError("Error recieved from Docker Event Subscription.", e)
 		case _ = <-shutdown:
@@ -322,11 +328,12 @@ Main:
 	}
 
 	log.Info("Cleaning Up")
-	connectWG.Wait()
+	eventWG.Wait()
 
 	var disconnectWG sync.WaitGroup
 	//leave all connected networks
 	for _, drn := range dr.networks {
+		// checking isConnected will automatically wait for any pending connections
 		if !drn.isConnected() {
 			continue
 		}
@@ -337,20 +344,8 @@ Main:
 		}(drn)
 	}
 
-	disconnectWait := make(chan struct{})
-	go func() {
-		defer close(disconnectWait)
-		disconnectWG.Wait()
-	}()
-
-Done:
-	for {
-		select {
-		case _ = <-disconnectWait:
-			log.Debug("Finished all network disconnects.")
-			break Done
-		}
-	}
+	disconnectWG.Wait()
+	log.Debug("Finished all network disconnects.")
 
 	//delete the p2p link
 	if hostShortcut {
