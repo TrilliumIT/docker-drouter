@@ -104,7 +104,7 @@ c0 := container on n0
 n1 := drouter network
 c1 := container on n1
 n2 := drouter network
-c2 := drouter network on n2
+c2 := container on n2
 n3 := drouter network
 
 start drouter
