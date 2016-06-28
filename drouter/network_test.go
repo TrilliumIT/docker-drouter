@@ -5,7 +5,7 @@ import (
 	"net"
 	"testing"
 
-	log "github.com/Sirupsen/logrus"
+	//log "github.com/Sirupsen/logrus"
 	logtest "github.com/Sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,7 +53,7 @@ func removeNetwork(id string, t *testing.T) {
 }
 
 func TestNetworkConnect(t *testing.T) {
-	assert := assert.New(t)
+	//assert := assert.New(t)
 
 	n0r := createNetwork(0, true, t)
 	defer removeNetwork(n0r.ID, t)

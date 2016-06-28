@@ -229,11 +229,6 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 								drn = newNetwork(&dn)
 								learnNetwork <- drn
 							}
-
-							// this will automatically wait for pending connections, no need to wait in main loop
-							if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-								drn.connect()
-							}
 						}()
 					}
 					//use timer instead of ticker to guarantee a 5 second delay from end to start
@@ -268,7 +263,8 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 		}
 	}
 	// subscribe to real docker events
-	dockerEventErr := events.Monitor(context.Background(), dockerClient, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
+	ctx, ctxDone := context.WithCancel(context.Background())
+	dockerEventErr := events.Monitor(ctx, dockerClient, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
 		dockerEvent <- event
 		return
 	})
@@ -276,7 +272,6 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 	routeEventDone := make(chan struct{})
 	defer close(routeEventDone)
 	routeEvent := make(chan netlink.RouteUpdate)
-	defer close(routeEvent)
 	err = netlink.RouteSubscribe(routeEvent, routeEventDone)
 	if err != nil {
 		logError("Failed to subscribe to drouter routing table.", err)
@@ -291,6 +286,13 @@ Main:
 			_, ok := dr.networks[drn.ID]
 			if !ok {
 				dr.networks[drn.ID] = drn
+
+				go func() {
+					// this will automatically wait for pending connections, no need to wait in main loop
+					if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
+						drn.connect()
+					}
+				}()
 			}
 		case e := <-dockerEvent:
 			eventWG.Add(1)
@@ -329,6 +331,7 @@ Main:
 
 	log.Info("Cleaning Up")
 	eventWG.Wait()
+	ctxDone()
 
 	var disconnectWG sync.WaitGroup
 	//leave all connected networks
@@ -411,6 +414,12 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, lear
 		return nil
 	}
 
+	cid, ok := event.Actor.Attributes["container"]
+	if !ok {
+		//we don't need to go any further because this event does not involve a container
+		return nil
+	}
+
 	// have we learned this network?
 	drn, ok := dr.networks[event.Actor.ID]
 	if !ok {
@@ -430,18 +439,19 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, lear
 		return nil
 	}
 
-	if event.Actor.Attributes["container"] == selfContainerID {
+	if cid == selfContainerID {
 		switch event.Action {
 		case "connect":
 			return drn.connectEvent()
 		case "disconnect":
 			return drn.disconnectEvent()
 		default:
+			//we don't handle whatever action this is
 			return nil
 		}
 	}
 
-	c, err := newContainerFromID(event.Actor.Attributes["container"])
+	c, err := newContainerFromID(cid)
 	if err != nil {
 		return err
 	}
@@ -452,7 +462,7 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, lear
 	case "disconnect":
 		return c.disconnectEvent(drn)
 	default:
-		//we don't handle whatever action this is (yet?)
+		//we don't handle whatever action this is
 		return nil
 	}
 }
