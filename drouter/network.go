@@ -17,7 +17,7 @@ import (
 type network struct {
 	Name        string
 	ID          string
-	IPAM        dockernetworks.IPAM
+	Subnets     []*net.IPNet
 	Options     map[string]string
 	log         *log.Entry
 	connectLock sync.RWMutex
@@ -29,7 +29,6 @@ func newNetwork(n *dockertypes.NetworkResource) *network {
 	drn := &network{
 		Name:      n.Name,
 		ID:        n.ID,
-		IPAM:      n.IPAM,
 		Options:   n.Options,
 		adminDown: false,
 		log: log.WithFields(log.Fields{
@@ -37,6 +36,17 @@ func newNetwork(n *dockertypes.NetworkResource) *network {
 				"Name": n.Name,
 				"ID":   n.ID,
 			}}),
+	}
+	for _, ic := range n.IPAM.Config {
+		_, subnet, err := net.ParseCIDR(ic.Subnet)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"Subnet": ic.Subnet,
+				"Error":  err,
+			}).Error("Failed to parse IPAM Subnet.")
+			continue
+		}
+		drn.Subnets = append(drn.Subnets, subnet)
 	}
 
 	return drn
@@ -63,15 +73,7 @@ func (n *network) connect() {
 		n.log.WithFields(log.Fields{
 			"ip-offset": ipOffset,
 		}).Debug("IP-Offset configured")
-		for _, ic := range n.IPAM.Config {
-			_, subnet, err := net.ParseCIDR(ic.Subnet)
-			if err != nil {
-				n.log.WithFields(log.Fields{
-					"Subnet": ic.Subnet,
-					"Error":  err,
-				}).Error("Failed to parse subnet.")
-				continue
-			}
+		for _, subnet := range n.Subnets {
 			if ipOffset > 0 {
 				ip = iputil.IPAdd(subnet.IP, ipOffset)
 			} else {
@@ -142,18 +144,10 @@ func isConnected(n *network) bool {
 		return false
 	}
 
-	for _, ic := range n.IPAM.Config {
+	for _, subnet := range n.Subnets {
 		for _, r := range routes {
 			if r.Gw != nil {
 				continue
-			}
-			_, subnet, err := net.ParseCIDR(ic.Subnet)
-			if err != nil {
-				n.log.WithFields(log.Fields{
-					"Subnet": ic.Subnet,
-					"Error":  err,
-				}).Error("Failed to parse subnet.")
-				return false
 			}
 			if iputil.SubnetEqualSubnet(r.Dst, subnet) {
 				//if we are connected to /any/ subnet, then we must be connected to the vxlan already
@@ -190,19 +184,11 @@ func (n *network) disconnectEvent() error {
 
 func (n *network) removeRoutes() {
 	var routeDelWG sync.WaitGroup
-	for _, i := range n.IPAM.Config {
+	for _, subnet := range n.Subnets {
 		routeDelWG.Add(1)
-		ic := i
+		sn := subnet
 		go func() {
 			defer routeDelWG.Done()
-			_, sn, err := net.ParseCIDR(ic.Subnet)
-			if err != nil {
-				n.log.WithFields(log.Fields{
-					"Subnet": ic.Subnet,
-					"Error":  err,
-				}).Error("Failed to parse subnet.")
-				return
-			}
 			coveredByStatic := subnetCoveredByStatic(sn)
 
 			//remove host shortcut routes
