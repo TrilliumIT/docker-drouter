@@ -241,11 +241,11 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 		checkLogs(hook.Entries, t)
 	}
 
-	drn, ok := dr.networks[n1r.ID]
+	drn, ok := dr.getNetwork(n1r.ID)
 	assert.True(ok, "should have learned n1 by now.")
 	assert.True(drn.isConnected(), "drouter should be connected to n1.")
 
-	drn, ok = dr.networks[n0r.ID]
+	drn, ok = dr.getNetwork(n0r.ID)
 	if aggressive {
 		assert.True(ok, "should have learned n0 by now.")
 	}
@@ -254,7 +254,7 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 		assert.False(drn.isConnected(), "drouter should not be connected to n0.")
 	}
 
-	drn, ok = dr.networks[n2r.ID]
+	drn, ok = dr.getNetwork(n2r.ID)
 	if aggressive {
 		assert.True(ok, "should have learned n2 by now.")
 	}

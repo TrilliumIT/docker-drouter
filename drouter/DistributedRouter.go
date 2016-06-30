@@ -53,6 +53,7 @@ type DistributedRouterOptions struct {
 
 type distributedRouter struct {
 	networks     map[string]*network
+	networksLock sync.RWMutex
 	defaultRoute net.IP
 }
 
@@ -232,7 +233,7 @@ func (dr *distributedRouter) start() error {
 							}
 
 							//do we know about this network already?
-							drn, ok := dr.networks[dn.ID]
+							drn, ok := dr.getNetwork(dn.ID)
 							if !ok {
 								log.Debugf("newNetwork(%v)", dn)
 								learnNetwork <- newNetwork(&dn)
@@ -317,17 +318,19 @@ Main:
 	for {
 		select {
 		case drn := <-learnNetwork:
-			_, ok := dr.networks[drn.ID]
-			if !ok {
-				drn.log.Debug("Learning network.")
-				dr.networks[drn.ID] = drn
-
-				go func() {
-					if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-						drn.connect()
-					}
-				}()
-			}
+			go func() {
+				_, ok := dr.getNetwork(drn.ID)
+				if !ok {
+					dr.networksLock.Lock()
+					defer dr.networksLock.Unlock()
+					dr.networks[drn.ID] = drn
+					go func() {
+						if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
+							drn.connect()
+						}
+					}()
+				}
+			}()
 		case e := <-dockerEvent:
 			eventWG.Add(1)
 			go func() {
@@ -455,7 +458,7 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, lear
 	}
 
 	// have we learned this network?
-	drn, ok := dr.networks[event.Actor.ID]
+	drn, ok := dr.getNetwork(event.Actor.ID)
 	if !ok {
 		//inspect network
 		nr, err := dockerClient.NetworkInspect(context.Background(), event.Actor.ID)
@@ -540,6 +543,13 @@ func (dr *distributedRouter) processRouteAddEvent(ru *netlink.RouteUpdate) error
 	modifyRoute(ru.Dst, nil, ADD_ROUTE)
 
 	return nil
+}
+
+func (dr *distributedRouter) getNetwork(id string) (*network, bool) {
+	dr.networksLock.RLock()
+	defer dr.networksLock.RUnlock()
+	drn, ok := dr.networks[id]
+	return drn, ok
 }
 
 func (dr *distributedRouter) initTransitNet() error {
