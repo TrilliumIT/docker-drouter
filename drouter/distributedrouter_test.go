@@ -133,12 +133,8 @@ func testRunClose(t *testing.T) {
 	}
 }
 
-func TestScenarios(t *testing.T) {
-	fmt.Println("Begin TestScenarios()")
-
-	var opts []*DistributedRouterOptions
-
-	opts = append(opts, &DistributedRouterOptions{
+func TestBasicAggressive(t *testing.T) {
+	opts := &DistributedRouterOptions{
 		IPOffset:         0,
 		Aggressive:       true,
 		HostShortcut:     false,
@@ -149,15 +145,28 @@ func TestScenarios(t *testing.T) {
 		StaticRoutes:     make([]string, 0),
 		TransitNet:       "",
 		InstanceName:     DR_INST,
-	})
-
-	for _, o := range opts {
-		cleanup()
-
-		runScenarioV4(o, t)
-
-		cleanup()
 	}
+	cleanup()
+	runScenarioV4(opts, t)
+	cleanup()
+}
+
+func TestBasicNonAggressive(t *testing.T) {
+	opts := &DistributedRouterOptions{
+		IPOffset:         0,
+		Aggressive:       false,
+		HostShortcut:     false,
+		ContainerGateway: false,
+		HostGateway:      false,
+		Masquerade:       false,
+		P2PAddr:          "172.29.255.252/30",
+		StaticRoutes:     make([]string, 0),
+		TransitNet:       "",
+		InstanceName:     DR_INST,
+	}
+	cleanup()
+	runScenarioV4(opts, t)
+	cleanup()
 }
 
 func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
@@ -212,20 +221,39 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 	fmt.Println("DRouter started.")
 
 	require.NoError(err, "Run() returned an error.")
-	checkLogs(hook.Entries, t)
+	if !aggressive && transitNetName == "" {
+		warns := 0
+		for _, e := range hook.Entries {
+			if e.Level == log.WarnLevel {
+				warns += 1
+			}
+			assert.True(e.Level >= log.WarnLevel, "All logs should be >= Warn, but observed log: ", e)
+		}
+		hook.Reset()
+		assert.Equal(warns, 1, "Should have recieved one warning message for running in Aggressive with no tranist net")
+	} else {
+		checkLogs(hook.Entries, t)
+	}
 
 	drn, ok := dr.networks[n1r.ID]
 	assert.True(ok, "should have learned n1 by now.")
 	assert.True(drn.isConnected(), "drouter should be connected to n1.")
 
+	drn, ok = dr.networks[n0r.ID]
 	if aggressive {
-		drn, ok = dr.networks[n0r.ID]
 		assert.True(ok, "should have learned n0 by now.")
+	}
+	// it's okay if we learned it in non-aggressive mode, but we should only be connected if we're in aggressive mode
+	if ok {
 		assert.False(drn.isConnected(), "drouter should not be connected to n0.")
+	}
 
-		drn, ok = dr.networks[n2r.ID]
+	drn, ok = dr.networks[n2r.ID]
+	if aggressive {
 		assert.True(ok, "should have learned n2 by now.")
-		assert.True(drn.isConnected(), "drouter should be connected to n2 in aggressive mode.")
+	}
+	if ok {
+		assert.Equal(aggressive, drn.isConnected(), "drouter should be connected to n2 if in aggressive mode.")
 	}
 
 	c0newRoutes, err := c0c.handle.RouteList(nil, netlink.FAMILY_ALL)
@@ -235,11 +263,8 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 	c1c, err := newContainerFromID(c1)
 	assert.NoError(err, "Failed to get container object for c1.")
 
-	if aggressive {
-		assert.True(handleContainsRoute(c1c.handle, testNets[2], nil, t), "c1 should have a route to n2.")
-	}
+	assert.Equal(aggressive, handleContainsRoute(c1c.handle, testNets[2], nil, t), "c1 should have a route to n2 if in aggressive mode.")
 
-	fmt.Println("Creating container 2.")
 	c2 := createContainer("c2", n2r.Name, t)
 	defer removeContainer(c2, t)
 	time.Sleep(5 * time.Second)
@@ -255,24 +280,18 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 	assert.False(handleContainsRoute(c2c.handle, testNets[0], nil, t), "c2 should not have a route to n0.")
 	assert.True(handleContainsRoute(c2c.handle, testNets[1], nil, t), "c2 should have a route to n1.")
 
-	fmt.Println("Creating network 3")
 	n3r := createNetwork(3, true, t)
 	defer removeNetwork(n3r.ID, t)
 
-	//only sleep if aggressive to give drouter time to connect to those networks
-	if aggressive {
-		time.Sleep(10 * time.Second)
-		assert.True(handleContainsRoute(c1c.handle, testNets[3], nil, t), "c1 should have a route to n3.")
-		assert.True(handleContainsRoute(c2c.handle, testNets[3], nil, t), "c2 should have a route to n3.")
-	} else {
-		assert.False(handleContainsRoute(c1c.handle, testNets[3], nil, t), "c1 should not have a route to n3 yet.")
-		assert.False(handleContainsRoute(c2c.handle, testNets[3], nil, t), "c2 should not have a route to n3 yet.")
-	}
+	//sleep to give aggressive time to connect to those networks
+	time.Sleep(10 * time.Second)
+	assert.Equal(aggressive, handleContainsRoute(c1c.handle, testNets[3], nil, t), "c1 should have a route to n3 if in aggressive.")
+	assert.Equal(aggressive, handleContainsRoute(c2c.handle, testNets[3], nil, t), "c2 should have a route to n3 if in aggressive.")
 
-	fmt.Println("Quitting.")
 	close(quit)
 
 	assert.NoError(<-ech, "Error during drouter shutdown.")
+	checkLogs(hook.Entries, t)
 }
 
 func handleContainsRoute(h *netlink.Handle, to *net.IPNet, via *net.IP, t *testing.T) bool {
@@ -287,70 +306,8 @@ func handleContainsRoute(h *netlink.Handle, to *net.IPNet, via *net.IP, t *testi
 		}
 
 		if iputil.SubnetEqualSubnet(r.Dst, to) && (via == nil || r.Gw.Equal(*via)) {
-			fmt.Printf("Found route to %v via %v.\n", to, via)
 			return true
 		}
 	}
-	fmt.Printf("Missing route to %v via %v.\n", to, via)
 	return false
 }
-
-/*
-// startup & shutdown tests
-n0 := non drouter network
-c0 := container on n0
-n1 := drouter network
-c1 := container on n1
-n2 := drouter network
-c2 := container on n2
-n3 := drouter network
-
-start drouter
-
-docker events expected:
-	- self connect to n1
-	- self connect to n2
-	if aggresive:
-		- self connect to n3
-
-route events expected:
-	- self direct to n1
-	- self direct to n2
-	if aggressive:
-		- self direct to n3
-	if containergateway:
-		- gateway change on c1
-		- gateway change on c2
-	if !containergateway:
-		- c1 to n2 via self-n1 - after direct to n1
-		- c2 to n1 via self-n2 - after direct to n2
-		if aggressive:
-			- c1 to n3 via self-n1 - after direct to n3
-			- c2 to n3 via self-n2 - after direct to n3
-
-stop drouter
-
-docker events expected:
-	- self disconnect from n1
-	- self disconnect from n2
-	if aggressive:
-		- self disconnect from n3
-
-route events expected:
-	// remember we don't see route loss on interface down
-	if containergateway:
-		- gateway change to orig on c1
-		- gateway change to orig on c2
-	if !containergateway:
-		- lose c1 to n2 - before self disconnect on n2
-		- lose c2 to n1 - before self disconnect on n1
-		if aggressive:
-			- lose c1 to n3 - before self disconnect on n3
-			- lose c2 to n3 - before self disconnect on n3
-
-// multi-connected tests
-
-
-// multi-subnet on dockernet test
-
-*/
