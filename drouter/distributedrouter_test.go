@@ -31,6 +31,65 @@ const (
 	DR_INST = "dr_test"
 )
 
+func TestMain(m *testing.M) {
+	fmt.Println("Begin TestMain().")
+	exitStatus := 1
+	defer func() { os.Exit(exitStatus) }()
+
+	resetGlobals()
+	cleanup()
+
+	testNets = make([]*net.IPNet, 4)
+	for i, _ := range testNets {
+		_, n, _ := net.ParseCIDR(fmt.Sprintf(NET_IPNET, i*8))
+		testNets[i] = n
+	}
+
+	exitStatus = m.Run()
+
+	cleanup()
+
+	// rejoin bridge, required to upload coverage
+	dc.NetworkConnect(bg, "bridge", selfContainerID, &dockerNTypes.EndpointSettings{})
+	fmt.Println("End TestMain().")
+}
+
+func TestBasicAggressive(t *testing.T) {
+	opts := &DistributedRouterOptions{
+		IPOffset:         0,
+		Aggressive:       true,
+		HostShortcut:     false,
+		ContainerGateway: false,
+		HostGateway:      false,
+		Masquerade:       false,
+		P2PAddr:          "172.29.255.252/30",
+		StaticRoutes:     make([]string, 0),
+		TransitNet:       "",
+		InstanceName:     DR_INST,
+	}
+	cleanup()
+	runScenarioV4(opts, t)
+	cleanup()
+}
+
+func TestBasicNonAggressive(t *testing.T) {
+	opts := &DistributedRouterOptions{
+		IPOffset:         0,
+		Aggressive:       false,
+		HostShortcut:     false,
+		ContainerGateway: false,
+		HostGateway:      false,
+		Masquerade:       false,
+		P2PAddr:          "172.29.255.252/30",
+		StaticRoutes:     make([]string, 0),
+		TransitNet:       "",
+		InstanceName:     DR_INST,
+	}
+	cleanup()
+	runScenarioV4(opts, t)
+	cleanup()
+}
+
 func cleanup() {
 	dockerNets, err := dc.NetworkList(bg, dockerTypes.NetworkListOptions{})
 	if err != nil {
@@ -78,29 +137,6 @@ func resetGlobals() {
 	bg = context.Background()
 }
 
-func TestMain(m *testing.M) {
-	fmt.Println("Begin TestMain().")
-	exitStatus := 1
-	defer func() { os.Exit(exitStatus) }()
-
-	resetGlobals()
-	cleanup()
-
-	testNets = make([]*net.IPNet, 4)
-	for i, _ := range testNets {
-		_, n, _ := net.ParseCIDR(fmt.Sprintf(NET_IPNET, i*8))
-		testNets[i] = n
-	}
-
-	exitStatus = m.Run()
-
-	cleanup()
-
-	// rejoin bridge, required to upload coverage
-	dc.NetworkConnect(bg, "bridge", selfContainerID, &dockerNTypes.EndpointSettings{})
-	fmt.Println("End TestMain().")
-}
-
 func checkLogs(entries []*log.Entry, t *testing.T) {
 	for _, e := range entries {
 		assert.True(t, e.Level >= log.InfoLevel, "All logs should be >= Info, but observed log: ", e)
@@ -131,42 +167,6 @@ func testRunClose(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error on Run Return: %v", err)
 	}
-}
-
-func TestBasicAggressive(t *testing.T) {
-	opts := &DistributedRouterOptions{
-		IPOffset:         0,
-		Aggressive:       true,
-		HostShortcut:     false,
-		ContainerGateway: false,
-		HostGateway:      false,
-		Masquerade:       false,
-		P2PAddr:          "172.29.255.252/30",
-		StaticRoutes:     make([]string, 0),
-		TransitNet:       "",
-		InstanceName:     DR_INST,
-	}
-	cleanup()
-	runScenarioV4(opts, t)
-	cleanup()
-}
-
-func TestBasicNonAggressive(t *testing.T) {
-	opts := &DistributedRouterOptions{
-		IPOffset:         0,
-		Aggressive:       false,
-		HostShortcut:     false,
-		ContainerGateway: false,
-		HostGateway:      false,
-		Masquerade:       false,
-		P2PAddr:          "172.29.255.252/30",
-		StaticRoutes:     make([]string, 0),
-		TransitNet:       "",
-		InstanceName:     DR_INST,
-	}
-	cleanup()
-	runScenarioV4(opts, t)
-	cleanup()
 }
 
 func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
