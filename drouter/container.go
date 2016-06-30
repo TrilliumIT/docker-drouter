@@ -408,15 +408,7 @@ func (c *container) connectEvent(drn *network) error {
 		return nil
 	}
 
-	for _, ic := range drn.IPAM.Config {
-		_, subnet, err := net.ParseCIDR(ic.Subnet)
-		if err != nil {
-			c.log.WithFields(log.Fields{
-				"Subnet": ic.Subnet,
-				"Error":  err,
-			}).Error("Failed to parse IPAM Subnet.")
-			continue
-		}
+	for _, subnet := range drn.Subnets {
 		c.delRoutes(subnet)
 	}
 
@@ -430,15 +422,7 @@ func (c *container) disconnectEvent(drn *network) error {
 	c.log.WithFields(log.Fields{
 		"network": drn,
 	}).Debug("Container disconnect event.")
-	for _, ic := range drn.IPAM.Config {
-		subnet, err := netlink.ParseIPNet(ic.Subnet)
-		if err != nil {
-			c.log.WithFields(log.Fields{
-				"Subnet": ic.Subnet,
-				"Error":  err,
-			}).Error("Failed to parse IPAM Subnet.")
-			continue
-		}
+	for _, subnet := range drn.Subnets {
 		c.delRoutesVia(nil, subnet)
 	}
 
