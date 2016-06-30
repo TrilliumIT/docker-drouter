@@ -185,6 +185,7 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 	hook := logtest.NewGlobal()
+	defer hook.Reset()
 
 	fmt.Println("Creating networks 0-2.")
 	n0r := createNetwork(0, false, t)
