@@ -91,10 +91,16 @@ func TestBasicNonAggressive(t *testing.T) {
 }
 
 func cleanup() {
-	dockerNets, err := dc.NetworkList(bg, dockerTypes.NetworkListOptions{})
-	if err != nil {
-		return
+	dockerContainers, _ := dc.ContainerList(bg, dockerTypes.ContainerListOptions{All: true})
+	for _, c := range dockerContainers {
+		for _, name := range c.Names {
+			if strings.HasPrefix(name, "/drntest_c") {
+				dc.ContainerKill(bg, c.ID, "")
+				dc.ContainerRemove(bg, c.ID, dockerTypes.ContainerRemoveOptions{Force: true})
+			}
+		}
 	}
+	dockerNets, _ := dc.NetworkList(bg, dockerTypes.NetworkListOptions{})
 	for _, dn := range dockerNets {
 		if strings.HasPrefix(dn.Name, "drntest_n") {
 			for c := range dn.Containers {
@@ -189,7 +195,7 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 	defer removeNetwork(n2r.ID, t)
 
 	fmt.Println("Creating containers 0-1.")
-	c0 := createContainer("c0", n0r.Name, t)
+	c0 := createContainer("0", n0r.Name, t)
 	defer removeContainer(c0, t)
 
 	c0c, err := newContainerFromID(c0)
@@ -197,7 +203,7 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 	c0routes, err := c0c.handle.RouteList(nil, netlink.FAMILY_ALL)
 	assert.NoError(err, "Failed to get c0 route list.")
 
-	c1 := createContainer("c1", n1r.Name, t)
+	c1 := createContainer("1", n1r.Name, t)
 	defer removeContainer(c1, t)
 
 	quit := make(chan struct{})
@@ -265,8 +271,7 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 
 	assert.Equal(aggressive, handleContainsRoute(c1c.handle, testNets[2], nil, t), "c1 should have a route to n2 if in aggressive mode.")
 
-	c2 := createContainer("c2", n2r.Name, t)
-	defer removeContainer(c2, t)
+	c2 := createContainer("2", n2r.Name, t)
 	time.Sleep(5 * time.Second)
 
 	checkLogs(hook.Entries, t)
@@ -287,6 +292,13 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 	time.Sleep(10 * time.Second)
 	assert.Equal(aggressive, handleContainsRoute(c1c.handle, testNets[3], nil, t), "c1 should have a route to n3 if in aggressive.")
 	assert.Equal(aggressive, handleContainsRoute(c2c.handle, testNets[3], nil, t), "c2 should have a route to n3 if in aggressive.")
+
+	// purposefully remove c2 and make sure c1 looses the route in non-aggressive
+	removeContainer(c2, t)
+	time.Sleep(5 * time.Second)
+	checkLogs(hook.Entries, t)
+
+	assert.Equal(aggressive, handleContainsRoute(c1c.handle, testNets[2], nil, t), "c1 should have a route to n2 in aggressive mode.")
 
 	close(quit)
 
