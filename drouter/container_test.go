@@ -87,5 +87,5 @@ func TestNonRunningContainer(t *testing.T) {
 	c, err := newContainerFromID(cid)
 	assert.Equal(err, nil, "Inspect stopped container should succeed")
 
-	assert.Equal(c.id, "", "Inspect on stopped container should return empty object")
+	assert.Nil(c.handle, "Inspect on stopped container should return nil handle")
 }

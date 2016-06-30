@@ -38,7 +38,15 @@ func newContainerFromID(id string) (*container, error) {
 	//log.Infof("State: %v", cjson.State.Running)
 	if !cjson.State.Running {
 		log.WithFields(log.Fields{"id": id}).Debug("Container not running.")
-		return &container{}, nil
+		return &container{
+			handle: nil,
+			id:     cjson.ID,
+			log: log.WithFields(log.Fields{
+				"container": map[string]string{
+					"Name": cjson.Name,
+					"ID":   cjson.ID,
+				}}),
+		}, nil
 	}
 
 	ch, err := netlinkHandleFromPid(cjson.State.Pid)
@@ -283,7 +291,8 @@ func (c *container) delRoutesVia(to, via *net.IPNet) {
 
 	gws, err := c.getPathIPs()
 	if err != nil {
-		c.logError("Failed to get path IPs", err)
+		// this may not be an error, expected when run against a shut down container.
+		c.log.Debug("Failed to get path IPs", err)
 		return
 	}
 
@@ -418,10 +427,6 @@ func (c *container) connectEvent(drn *network) error {
 
 // called when we detect a container has disconnected from a drouter network
 func (c *container) disconnectEvent(drn *network) error {
-	if c.handle == nil {
-		// container is dead
-		return nil
-	}
 	c.log.WithFields(log.Fields{
 		"network": drn,
 	}).Debug("Container disconnect event.")
@@ -496,7 +501,8 @@ func (c *container) getPathIPs() ([]net.IP, error) {
 	c.log.Debug("Getting path IPs")
 	if c.handle == nil {
 		err := fmt.Errorf("No namespace handle for container, is it running?")
-		c.logError("No namespace handle for container", err)
+		// not necessarily an error. Happens when container stops in non-aggressive mode
+		c.log.Debug("No namespace handle for container", err)
 		return nil, err
 	}
 
@@ -541,7 +547,8 @@ func (c *container) getPathIP() (net.IP, error) {
 	// TODO: This needs to accept a family
 	ips, err := c.getPathIPs()
 	if err != nil {
-		c.logError("Failed to get path IPs", err)
+		// this may not be an error, expected when run against a shut down container.
+		c.log.Debug("Failed to get path IPs", err)
 		return nil, err
 	}
 
