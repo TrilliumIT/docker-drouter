@@ -275,19 +275,6 @@ func (c *container) delRoutesVia(to, via *net.IPNet) {
 		"Subnet": to,
 		"Via":    via,
 	}).Debug("Deleting routes to subnet via gateways in Via.")
-	//get all container routes
-	routes, err := c.getRoutes()
-	if err != nil {
-		c.logError("Failed to get container route table.", err)
-		return
-	}
-
-	//get all drouter ips
-	ips, err := netlink.AddrList(nil, netlink.FAMILY_ALL)
-	if err != nil {
-		logError("Failed to get drouter ip addresses.", err)
-		return
-	}
 
 	gws, err := c.getPathIPs()
 	if err != nil {
@@ -307,6 +294,20 @@ func (c *container) delRoutesVia(to, via *net.IPNet) {
 		}
 	}
 
+	//get all drouter ips
+	ips, err := netlink.AddrList(nil, netlink.FAMILY_ALL)
+	if err != nil {
+		logError("Failed to get drouter ip addresses.", err)
+		return
+	}
+
+	//get all container routes
+	routes, err := c.getRoutes()
+	if err != nil {
+		c.logError("Failed to get container route table.", err)
+		return
+	}
+
 	for _, r := range routes {
 		if r.Dst != nil && to != nil && !iputil.SubnetContainsSubnet(to, r.Dst) {
 			continue
@@ -324,7 +325,9 @@ func (c *container) delRoutesVia(to, via *net.IPNet) {
 				"Gateway":     r.Gw,
 			}).Debug("Deleting route from container")
 			err := c.handle.RouteDel(&r)
-			if err != nil {
+			// no such process just means the route was already deleted
+			// this happens on shutdown cause there are multiple paths that might try to delete the route.
+			if err != nil && err.Error() != "no such process" {
 				c.log.WithFields(log.Fields{
 					"Destination": r.Dst,
 					"Gateway":     r.Gw,
