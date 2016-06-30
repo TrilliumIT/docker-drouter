@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	CONT_NAME  = "drntest_%v"
+	CONT_NAME  = "drntest_c%v"
 	CONT_IMAGE = "alpine"
 )
 
@@ -56,7 +56,7 @@ func TestNewContainer(t *testing.T) {
 	n0r := createNetwork(0, true, t)
 	defer removeNetwork(n0r.ID, t)
 
-	cid := createContainer("c0", n0r.Name, t)
+	cid := createContainer("0", n0r.Name, t)
 	defer removeContainer(cid, t)
 
 	hook := logtest.NewGlobal()
@@ -77,7 +77,7 @@ func TestNonRunningContainer(t *testing.T) {
 	n0r := createNetwork(0, true, t)
 	defer removeNetwork(n0r.ID, t)
 
-	cid := createContainer("c0", n0r.Name, t)
+	cid := createContainer("0", n0r.Name, t)
 	defer removeContainer(cid, t)
 
 	err := dc.ContainerKill(bg, cid, "")

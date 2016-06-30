@@ -418,6 +418,10 @@ func (c *container) connectEvent(drn *network) error {
 
 // called when we detect a container has disconnected from a drouter network
 func (c *container) disconnectEvent(drn *network) error {
+	if c.handle == nil {
+		// container is dead
+		return nil
+	}
 	c.log.WithFields(log.Fields{
 		"network": drn,
 	}).Debug("Container disconnect event.")
