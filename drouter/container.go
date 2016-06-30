@@ -19,7 +19,6 @@ const (
 )
 
 type container struct {
-	name   string
 	id     string
 	log    *log.Entry
 	handle *netlink.Handle
@@ -57,7 +56,6 @@ func newContainerFromID(id string) (*container, error) {
 	log.WithFields(log.Fields{"id": id}).Debug("Returning container object")
 	return &container{
 		handle: ch,
-		name:   cjson.Name,
 		id:     cjson.ID,
 		log: log.WithFields(log.Fields{
 			"container": map[string]string{
@@ -83,11 +81,12 @@ func (c *container) addAllRoutes() error {
 	var routeAddWG sync.WaitGroup
 	//Loop through all static routes, ensure each one is installed in the container
 	//add routes for all the static routes
-	for i, sr := range staticRoutes {
+	for i, r := range staticRoutes {
 		if i == 0 {
 			c.log.Info("Syncing static routes")
 		}
 		routeAddWG.Add(1)
+		sr := r
 		go func() {
 			defer routeAddWG.Done()
 			c.addRoute(sr)
@@ -151,9 +150,11 @@ Subnets:
 			"Destination": r.Dst,
 		}).Debug("Adding route")
 		routeAddWG.Add(1)
+		cont := c
+		nr := r
 		go func() {
 			defer routeAddWG.Done()
-			c.addRoute(r.Dst)
+			cont.addRoute(nr.Dst)
 		}()
 	}
 
@@ -486,7 +487,8 @@ func (c *container) disconnectEvent(drn *network) error {
 }
 
 //returns a drouter IP that is on some same network as provided container
-func (c *container) getPathIPs() (ips []net.IP, err error) {
+func (c *container) getPathIPs() ([]net.IP, error) {
+	var ips []net.IP
 	c.log.Debug("Getting path IPs")
 	if c.handle == nil {
 		err := fmt.Errorf("No namespace handle for container, is it running?")
@@ -527,7 +529,7 @@ func (c *container) getPathIPs() (ips []net.IP, err error) {
 		}
 	}
 
-	return
+	return ips, nil
 }
 
 func (c *container) getPathIP() (net.IP, error) {

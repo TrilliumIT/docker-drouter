@@ -27,6 +27,7 @@ type network struct {
 func newNetwork(n *dockertypes.NetworkResource) *network {
 	//create the network
 	drn := &network{
+		Name:      n.Name,
 		ID:        n.ID,
 		IPAM:      n.IPAM,
 		Options:   n.Options,
@@ -47,12 +48,13 @@ func (n *network) logError(msg string, err error) {
 
 //connects to a drNetwork
 func (n *network) connect() {
+	n.log.Debug("Connecting to network")
 	n.connectLock.Lock()
 	defer n.connectLock.Unlock()
 	if isConnected(n) {
+		n.log.Debug("Already connected.")
 		return
 	}
-	n.log.Debug("Connecting to network")
 
 	endpointSettings := &dockernetworks.EndpointSettings{}
 	//select drouter IP for network
@@ -188,8 +190,9 @@ func (n *network) disconnectEvent() error {
 
 func (n *network) removeRoutes() {
 	var routeDelWG sync.WaitGroup
-	for _, ic := range n.IPAM.Config {
+	for _, i := range n.IPAM.Config {
 		routeDelWG.Add(1)
+		ic := i
 		go func() {
 			defer routeDelWG.Done()
 			_, sn, err := net.ParseCIDR(ic.Subnet)

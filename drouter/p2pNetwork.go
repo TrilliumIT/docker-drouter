@@ -219,7 +219,8 @@ Hroutes:
 	}
 
 	var hostRouteWG sync.WaitGroup
-	for _, sr := range staticRoutes {
+	for _, r := range staticRoutes {
+		sr := r
 		go func() {
 			defer hostRouteWG.Done()
 			if iputil.SubnetContainsSubnet(hroute.Dst, sr) {

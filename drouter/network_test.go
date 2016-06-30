@@ -69,9 +69,9 @@ func TestNetworkConnect(t *testing.T) {
 }
 
 func TestIPOffset(t *testing.T) {
+	defer resetGlobals()
 	assert := assert.New(t)
 	ipOffset = 2
-	defer func() { ipOffset = 0 }()
 
 	n0r := createNetwork(0, true, t)
 	defer removeNetwork(n0r.ID, t)
@@ -89,9 +89,9 @@ func TestIPOffset(t *testing.T) {
 }
 
 func TestNegativeIPOffset(t *testing.T) {
+	defer resetGlobals()
 	assert := assert.New(t)
 	ipOffset = -1
-	defer func() { ipOffset = 0 }()
 
 	n0r := createNetwork(0, true, t)
 	defer removeNetwork(n0r.ID, t)
@@ -165,24 +165,25 @@ func TestIsDrouterFalse(t *testing.T) {
 }
 
 func TestIsDrouterTransit(t *testing.T) {
+	defer resetGlobals()
 	assert := assert.New(t)
 
 	n0r := createNetwork(0, true, t)
 	defer removeNetwork(n0r.ID, t)
 	transitNetID = n0r.ID
-	defer func() { transitNetID = "" }()
 	n0 := newNetwork(&n0r)
 
 	assert.True(n0.isDRouter())
 }
 
 func TestAdminDownNonAggressive(t *testing.T) {
+	defer resetGlobals()
 	assert := assert.New(t)
 
 	n0r := createNetwork(0, true, t)
 	defer removeNetwork(n0r.ID, t)
 	transitNetID = n0r.ID
-	defer func() { transitNetID = "" }()
+	aggressive = false
 	n0 := newNetwork(&n0r)
 
 	assert.False(n0.adminDown)
@@ -192,14 +193,13 @@ func TestAdminDownNonAggressive(t *testing.T) {
 }
 
 func TestAdminDownAggressive(t *testing.T) {
+	defer resetGlobals()
 	assert := assert.New(t)
 	aggressive = true
-	defer func() { aggressive = false }()
 
 	n0r := createNetwork(0, true, t)
 	defer removeNetwork(n0r.ID, t)
 	transitNetID = n0r.ID
-	defer func() { transitNetID = "" }()
 	n0 := newNetwork(&n0r)
 
 	assert.False(n0.adminDown)
@@ -241,9 +241,9 @@ func createMultiSubnetNetwork(n int, dr bool, t *testing.T) dockerTypes.NetworkR
 
 // disabled becasue bridge driver doesn't support multiple subnets
 func testMultiSubnetIPOffset(t *testing.T) {
+	defer resetGlobals()
 	assert := assert.New(t)
 	ipOffset = 2
-	defer func() { ipOffset = 0 }()
 
 	n0r := createMultiSubnetNetwork(0, true, t)
 	defer removeNetwork(n0r.ID, t)

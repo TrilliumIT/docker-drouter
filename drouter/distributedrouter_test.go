@@ -46,22 +46,44 @@ func cleanup() {
 	}
 }
 
-func TestMain(m *testing.M) {
-	exitStatus := 1
-	defer func() { os.Exit(exitStatus) }()
-	var err error
+func resetGlobals() {
+	//cli options
+	ipOffset = 0
+	aggressive = false
+	hostShortcut = false
+	containerGateway = false
+	hostGateway = false
+	masquerade = false
+	p2p = nil
+	staticRoutes = nil
+	transitNetName = ""
+	selfContainerID = ""
+	instanceName = ""
 
+	//other globals
+	dockerClient = nil
+	transitNetID = ""
+	stopChan = nil
+
+	log.SetLevel(log.InfoLevel)
+
+	//re-init
 	opts := &DistributedRouterOptions{
 		Aggressive:   true,
 		InstanceName: DR_INST,
 	}
-	err = initVars(opts)
-	if err != nil {
-		return
-	}
+	initVars(opts)
+
 	dc = dockerClient
 	bg = context.Background()
+}
 
+func TestMain(m *testing.M) {
+	fmt.Println("Begin TestMain().")
+	exitStatus := 1
+	defer func() { os.Exit(exitStatus) }()
+
+	resetGlobals()
 	cleanup()
 
 	testNets = make([]*net.IPNet, 4)
@@ -76,11 +98,12 @@ func TestMain(m *testing.M) {
 
 	// rejoin bridge, required to upload coverage
 	dc.NetworkConnect(bg, "bridge", selfContainerID, &dockerNTypes.EndpointSettings{})
+	fmt.Println("End TestMain().")
 }
 
 func checkLogs(entries []*log.Entry, t *testing.T) {
 	for _, e := range entries {
-		assert.Equal(t, e.Level <= log.InfoLevel, true, "All logs should be <= Info")
+		assert.True(t, e.Level >= log.InfoLevel, "All logs should be >= Info, but observed log: ", e)
 	}
 }
 
@@ -113,9 +136,9 @@ func testRunClose(t *testing.T) {
 func TestScenarios(t *testing.T) {
 	fmt.Println("Begin TestScenarios()")
 
-	cleanup()
+	var opts []*DistributedRouterOptions
 
-	opts := &DistributedRouterOptions{
+	opts = append(opts, &DistributedRouterOptions{
 		IPOffset:         0,
 		Aggressive:       true,
 		HostShortcut:     false,
@@ -126,18 +149,27 @@ func TestScenarios(t *testing.T) {
 		StaticRoutes:     make([]string, 0),
 		TransitNet:       "",
 		InstanceName:     DR_INST,
+	})
+
+	for _, o := range opts {
+		cleanup()
+
+		runScenarioV4(o, t)
+
+		cleanup()
 	}
-
-	runScenarioV4(opts, t)
-
-	cleanup()
 }
 
 func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
+	defer resetGlobals()
+	var err error
+
+	//Temporary debug level to write this function
+	log.SetLevel(log.DebugLevel)
+
 	assert := assert.New(t)
 	require := require.New(t)
 	hook := logtest.NewGlobal()
-	log.SetLevel(log.DebugLevel)
 
 	fmt.Println("Creating networks 0-2.")
 	n0r := createNetwork(0, false, t)
@@ -148,20 +180,30 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 	defer removeNetwork(n2r.ID, t)
 
 	fmt.Println("Creating containers 0-1.")
-	c0 := createContainer(n0r.Name, t)
+	c0 := createContainer("c0", n0r.Name, t)
 	defer removeContainer(c0, t)
-	c1 := createContainer(n1r.Name, t)
+
+	c0c, err := newContainerFromID(c0)
+	assert.NoError(err, "Failed to get container object for c0.")
+	c0routes, err := c0c.handle.RouteList(nil, netlink.FAMILY_ALL)
+	assert.NoError(err, "Failed to get c0 route list.")
+
+	c1 := createContainer("c1", n1r.Name, t)
 	defer removeContainer(c1, t)
 
 	quit := make(chan struct{})
+	stopChan = quit
+
+	dr, err := newDistributedRouter(opts)
+	require.NoError(err, "Failed to create dr object.")
+
 	ech := make(chan error)
 	go func() {
 		fmt.Println("Starting DRouter.")
-		ech <- Run(opts, quit)
+		ech <- dr.start()
 	}()
 
-	startDelay := time.NewTimer(10 * time.Second)
-	var err error
+	startDelay := time.NewTimer(20 * time.Second)
 	select {
 	case _ = <-startDelay.C:
 		err = nil
@@ -169,29 +211,36 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 	}
 	fmt.Println("DRouter started.")
 
-	require.Equal(err, nil, "Run() returned an error.")
+	require.NoError(err, "Run() returned an error.")
 	checkLogs(hook.Entries, t)
 
-	for _, e := range hook.Entries {
-		if e.Level >= log.InfoLevel {
-			continue
-		}
+	drn, ok := dr.networks[n1r.ID]
+	assert.True(ok, "should have learned n1 by now.")
+	assert.True(drn.isConnected(), "drouter should be connected to n1.")
 
-		fmt.Println(e.Data)
-		//if d, ok := e.Data["container"]; ok {
-		//	assert.NotEqual(d.ID, c0, "There should be no >= INFO logs for c0.")
-		//}
+	if aggressive {
+		drn, ok = dr.networks[n0r.ID]
+		assert.True(ok, "should have learned n0 by now.")
+		assert.False(drn.isConnected(), "drouter should not be connected to n0.")
+
+		drn, ok = dr.networks[n2r.ID]
+		assert.True(ok, "should have learned n2 by now.")
+		assert.True(drn.isConnected(), "drouter should be connected to n2 in aggressive mode.")
 	}
 
+	c0newRoutes, err := c0c.handle.RouteList(nil, netlink.FAMILY_ALL)
+	assert.NoError(err, "Failed to get new c0 route list.")
+	assert.EqualValues(c0routes, c0newRoutes, "c0 routes should not be modified.")
+
 	c1c, err := newContainerFromID(c1)
-	assert.Equal(err, nil, "Failed to create c1.")
+	assert.NoError(err, "Failed to get container object for c1.")
 
 	if aggressive {
 		assert.True(handleContainsRoute(c1c.handle, testNets[2], nil, t), "c1 should have a route to n2.")
 	}
 
 	fmt.Println("Creating container 2.")
-	c2 := createContainer(n2r.Name, t)
+	c2 := createContainer("c2", n2r.Name, t)
 	defer removeContainer(c2, t)
 	time.Sleep(5 * time.Second)
 
@@ -200,8 +249,8 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 	assert.False(handleContainsRoute(c1c.handle, testNets[0], nil, t), "c1 should not have a route to n0.")
 	assert.True(handleContainsRoute(c1c.handle, testNets[2], nil, t), "c1 should have a route to n2.")
 
-	c2c, err := newContainerFromID(c1)
-	assert.Equal(err, nil, "Failed to create c2.")
+	c2c, err := newContainerFromID(c2)
+	assert.NoError(err, "Failed to create c2.")
 
 	assert.False(handleContainsRoute(c2c.handle, testNets[0], nil, t), "c2 should not have a route to n0.")
 	assert.True(handleContainsRoute(c2c.handle, testNets[1], nil, t), "c2 should have a route to n1.")
@@ -223,14 +272,14 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 	fmt.Println("Quitting.")
 	close(quit)
 
-	assert.Equal(<-ech, nil, "Error during drouter shutdown.")
+	assert.NoError(<-ech, "Error during drouter shutdown.")
 }
 
 func handleContainsRoute(h *netlink.Handle, to *net.IPNet, via *net.IP, t *testing.T) bool {
 	require := require.New(t)
 
 	routes, err := h.RouteList(nil, netlink.FAMILY_ALL)
-	require.Equal(err, nil, "Failed to get routes from handle.")
+	require.NoError(err, "Failed to get routes from handle.")
 
 	for _, r := range routes {
 		if r.Dst == nil || r.Gw == nil {
@@ -238,9 +287,11 @@ func handleContainsRoute(h *netlink.Handle, to *net.IPNet, via *net.IP, t *testi
 		}
 
 		if iputil.SubnetEqualSubnet(r.Dst, to) && (via == nil || r.Gw.Equal(*via)) {
+			fmt.Printf("Found route to %v via %v.\n", to, via)
 			return true
 		}
 	}
+	fmt.Printf("Missing route to %v via %v.\n", to, via)
 	return false
 }
 

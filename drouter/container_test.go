@@ -1,6 +1,7 @@
 package drouter
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -15,11 +16,11 @@ import (
 )
 
 const (
-	CONT_NAME  = "drntest_c%v"
+	CONT_NAME  = "drntest_%v"
 	CONT_IMAGE = "alpine"
 )
 
-func createContainer(n string, t *testing.T) string {
+func createContainer(cn, n string, t *testing.T) string {
 	r, err := dc.ContainerCreate(bg,
 		&dockerCTypes.Config{
 			Image:      CONT_IMAGE,
@@ -30,7 +31,7 @@ func createContainer(n string, t *testing.T) string {
 			EndpointsConfig: map[string]*dockerNTypes.EndpointSettings{
 				n: &dockerNTypes.EndpointSettings{},
 			},
-		}, "")
+		}, fmt.Sprintf(CONT_NAME, cn))
 	require.Equal(t, err, nil, "Error creating container")
 
 	err = dc.ContainerStart(bg, r.ID, dockerTypes.ContainerStartOptions{})
@@ -55,7 +56,7 @@ func TestNewContainer(t *testing.T) {
 	n0r := createNetwork(0, true, t)
 	defer removeNetwork(n0r.ID, t)
 
-	cid := createContainer(n0r.Name, t)
+	cid := createContainer("c0", n0r.Name, t)
 	defer removeContainer(cid, t)
 
 	hook := logtest.NewGlobal()
@@ -76,7 +77,7 @@ func TestNonRunningContainer(t *testing.T) {
 	n0r := createNetwork(0, true, t)
 	defer removeNetwork(n0r.ID, t)
 
-	cid := createContainer(n0r.Name, t)
+	cid := createContainer("c0", n0r.Name, t)
 	defer removeContainer(cid, t)
 
 	err := dc.ContainerKill(bg, cid, "")
