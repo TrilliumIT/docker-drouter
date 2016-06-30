@@ -59,6 +59,7 @@ func TestNetworkConnect(t *testing.T) {
 	defer removeNetwork(n0r.ID, t)
 
 	hook := logtest.NewGlobal()
+	defer hook.Reset()
 	n0 := newNetwork(&n0r)
 
 	n0.connect()
@@ -77,6 +78,7 @@ func TestIPOffset(t *testing.T) {
 	defer removeNetwork(n0r.ID, t)
 
 	hook := logtest.NewGlobal()
+	defer hook.Reset()
 	n0 := newNetwork(&n0r)
 	n0.connect()
 
@@ -97,6 +99,7 @@ func TestNegativeIPOffset(t *testing.T) {
 	defer removeNetwork(n0r.ID, t)
 
 	hook := logtest.NewGlobal()
+	defer hook.Reset()
 	n0 := newNetwork(&n0r)
 	n0.connect()
 
@@ -113,6 +116,7 @@ func TestMultipleConnectWarn(t *testing.T) {
 	defer removeNetwork(n0r.ID, t)
 
 	hook := logtest.NewGlobal()
+	defer hook.Reset()
 	n0 := newNetwork(&n0r)
 	n0.connect()
 	defer n0.disconnect()
@@ -131,6 +135,7 @@ func TestIsConnected(t *testing.T) {
 
 	n0 := newNetwork(&n0r)
 	hook := logtest.NewGlobal()
+	defer hook.Reset()
 	assert.False(n0.isConnected(), "Network should not be connected")
 	checkLogs(hook.Entries, t)
 
@@ -249,6 +254,7 @@ func testMultiSubnetIPOffset(t *testing.T) {
 	defer removeNetwork(n0r.ID, t)
 
 	hook := logtest.NewGlobal()
+	defer hook.Reset()
 	n0 := newNetwork(&n0r)
 	n0.connect()
 

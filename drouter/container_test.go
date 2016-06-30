@@ -60,6 +60,7 @@ func TestNewContainer(t *testing.T) {
 	defer removeContainer(cid, t)
 
 	hook := logtest.NewGlobal()
+	defer hook.Reset()
 	_, err := newContainerFromID(cid)
 	assert.Equal(err, nil, "Failed to get container object")
 	checkLogs(hook.Entries, t)
