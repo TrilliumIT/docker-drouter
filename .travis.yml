@@ -19,6 +19,7 @@ before_install:
 
 install:
   - $GOPATH/bin/glide install
+  - cp -R ./vendor/* $GOPATH/src/
 
 before_script:
   - docker build -t droutertest -f ./Dockertest .
