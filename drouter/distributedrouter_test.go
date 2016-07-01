@@ -28,7 +28,7 @@ var (
 )
 
 const (
-	DR_INST = "dr_test"
+	DrInst = "dr_test"
 )
 
 func TestMain(m *testing.M) {
@@ -40,8 +40,8 @@ func TestMain(m *testing.M) {
 	cleanup()
 
 	testNets = make([]*net.IPNet, 4)
-	for i, _ := range testNets {
-		_, n, _ := net.ParseCIDR(fmt.Sprintf(NET_IPNET, i*8))
+	for i := range testNets {
+		_, n, _ := net.ParseCIDR(fmt.Sprintf(NetIPNet, i*8))
 		testNets[i] = n
 	}
 
@@ -65,7 +65,7 @@ func TestBasicAggressive(t *testing.T) {
 		P2PAddr:          "172.29.255.252/30",
 		StaticRoutes:     make([]string, 0),
 		TransitNet:       "",
-		InstanceName:     DR_INST,
+		InstanceName:     DrInst,
 	}
 	cleanup()
 	runScenarioV4(opts, t)
@@ -83,7 +83,7 @@ func TestBasicNonAggressive(t *testing.T) {
 		P2PAddr:          "172.29.255.252/30",
 		StaticRoutes:     make([]string, 0),
 		TransitNet:       "",
-		InstanceName:     DR_INST,
+		InstanceName:     DrInst,
 	}
 	cleanup()
 	runScenarioV4(opts, t)
@@ -135,7 +135,7 @@ func resetGlobals() {
 	//re-init
 	opts := &DistributedRouterOptions{
 		Aggressive:   true,
-		InstanceName: DR_INST,
+		InstanceName: DrInst,
 	}
 	initVars(opts)
 
@@ -232,7 +232,7 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 		warns := 0
 		for _, e := range hook.Entries {
 			if e.Level == log.WarnLevel {
-				warns += 1
+				warns++
 			}
 			assert.True(e.Level >= log.WarnLevel, "All logs should be >= Warn, but observed log: ", e)
 		}

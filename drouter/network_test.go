@@ -16,24 +16,24 @@ import (
 )
 
 const (
-	NET_NAME  = "drntest_n%v"
-	NET_GW    = "192.168.242.%v"
-	NET_IPNET = "192.168.242.%v/29"
+	NetName  = "drntest_n%v"
+	NetGw    = "192.168.242.%v"
+	NetIPNet = "192.168.242.%v/29"
 )
 
 func createNetwork(n int, dr bool, t *testing.T) dockerTypes.NetworkResource {
-	name := fmt.Sprintf(NET_NAME, n)
+	name := fmt.Sprintf(NetName, n)
 	opts := make(map[string]string)
 	if dr {
-		opts["drouter"] = DR_INST
+		opts["drouter"] = DrInst
 	}
 	r, err := dc.NetworkCreate(bg, name, dockerTypes.NetworkCreate{
 		Options: opts,
 		IPAM: dockerNTypes.IPAM{
 			Config: []dockerNTypes.IPAMConfig{
 				dockerNTypes.IPAMConfig{
-					Subnet:  fmt.Sprintf(NET_IPNET, n*8),
-					Gateway: fmt.Sprintf(NET_GW, n*8+1),
+					Subnet:  fmt.Sprintf(NetIPNet, n*8),
+					Gateway: fmt.Sprintf(NetGw, n*8+1),
 				},
 			},
 		},
@@ -218,18 +218,18 @@ func TestAdminDownAggressive(t *testing.T) {
 }
 
 func createMultiSubnetNetwork(n int, dr bool, t *testing.T) dockerTypes.NetworkResource {
-	name := fmt.Sprintf(NET_NAME, n)
+	name := fmt.Sprintf(NetName, n)
 	opts := make(map[string]string)
 	if dr {
-		opts["drouter"] = DR_INST
+		opts["drouter"] = DrInst
 	}
 	r, err := dc.NetworkCreate(bg, name, dockerTypes.NetworkCreate{
 		Options: opts,
 		IPAM: dockerNTypes.IPAM{
 			Config: []dockerNTypes.IPAMConfig{
 				dockerNTypes.IPAMConfig{
-					Subnet:  fmt.Sprintf(NET_IPNET, n*8),
-					Gateway: fmt.Sprintf(NET_GW, n*8+1),
+					Subnet:  fmt.Sprintf(NetIPNet, n*8),
+					Gateway: fmt.Sprintf(NetGw, n*8+1),
 				},
 				dockerNTypes.IPAMConfig{
 					Subnet:  fmt.Sprintf("192.168.243.%v/29", n*8),

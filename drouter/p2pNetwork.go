@@ -16,7 +16,7 @@ type p2pNetwork struct {
 	selfIP        net.IP
 	hostNamespace *netlink.Handle
 	hostUnderlay  *net.IPNet
-	log           *log.Entry
+	hostLink      *log.Entry
 }
 
 func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
@@ -31,23 +31,23 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 	}).Debug("Making p2p network")
 
 	//check if drouter_veth0 already exists
-	host_link, err := hns.LinkByName("drouter_veth0")
+	hostLink, err := hns.LinkByName("drouter_veth0")
 	if err == nil {
 		//exists already... delete
-		hns.LinkDel(host_link)
+		hns.LinkDel(hostLink)
 	}
 	err = nil
 
-	host_link_veth := &netlink.Veth{
+	hostLinkVeth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{Name: "drouter_veth0"},
 		PeerName:  "drouter_veth1",
 	}
-	err = hns.LinkAdd(host_link_veth)
+	err = hns.LinkAdd(hostLinkVeth)
 	if err != nil {
 		logError("Failed to add p2p link", err)
 		return nil, err
 	}
-	host_link, err = hns.LinkByName("drouter_veth0")
+	hostLink, err = hns.LinkByName("drouter_veth0")
 	if err != nil {
 		log.WithFields(log.Fields{
 			"LinkName": "drouter_veth0",
@@ -56,7 +56,7 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 		return nil, err
 	}
 
-	int_link, err := hns.LinkByName("drouter_veth1")
+	intLink, err := hns.LinkByName("drouter_veth1")
 	if err != nil {
 		log.WithFields(log.Fields{
 			"LinkName": "drouter_veth1",
@@ -64,16 +64,16 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 		}).Error("Failed to get p2p link")
 		return nil, err
 	}
-	err = hns.LinkSetNsPid(int_link, os.Getpid())
+	err = hns.LinkSetNsPid(intLink, os.Getpid())
 	if err != nil {
 		log.WithFields(log.Fields{
 			"Pid":   os.Getpid(),
-			"Link":  int_link,
+			"Link":  intLink,
 			"Error": err,
 		}).Error("Failed to put p2p link in self namespace")
 		return nil, err
 	}
-	int_link, err = netlink.LinkByName("drouter_veth1")
+	intLink, err = netlink.LinkByName("drouter_veth1")
 	if err != nil {
 		log.WithFields(log.Fields{
 			"LinkName": "drouter_veth1",
@@ -91,50 +91,50 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 		return nil, err
 	}
 
-	host_addr := *p2pIPNet
-	host_addr.IP = iputil.IPAdd(host_addr.IP, 1)
-	host_netlink_addr := &netlink.Addr{
-		IPNet: &host_addr,
+	hostAddr := *p2pIPNet
+	hostAddr.IP = iputil.IPAdd(hostAddr.IP, 1)
+	hostNetlinkAddr := &netlink.Addr{
+		IPNet: &hostAddr,
 		Label: "",
 	}
-	err = hns.AddrAdd(host_link, host_netlink_addr)
+	err = hns.AddrAdd(hostLink, hostNetlinkAddr)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"IP":    host_netlink_addr,
-			"Link":  host_link,
+			"IP":    hostNetlinkAddr,
+			"Link":  hostLink,
 			"Error": err,
 		}).Error("Failed to add IP to link.")
 		return nil, err
 	}
 
-	int_addr := *p2pIPNet
-	int_addr.IP = iputil.IPAdd(int_addr.IP, 2)
-	int_netlink_addr := &netlink.Addr{
-		IPNet: &int_addr,
+	intAddr := *p2pIPNet
+	intAddr.IP = iputil.IPAdd(intAddr.IP, 2)
+	intNetlinkAddr := &netlink.Addr{
+		IPNet: &intAddr,
 		Label: "",
 	}
-	err = netlink.AddrAdd(int_link, int_netlink_addr)
+	err = netlink.AddrAdd(intLink, intNetlinkAddr)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"IP":    int_netlink_addr,
-			"Link":  int_link,
+			"IP":    intNetlinkAddr,
+			"Link":  intLink,
 			"Error": err,
 		}).Error("Failed to add IP to link.")
 	}
 
-	err = netlink.LinkSetUp(int_link)
+	err = netlink.LinkSetUp(intLink)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"Link":  int_link,
+			"Link":  intLink,
 			"Error": err,
 		}).Error("Failed to set link up.")
 		return nil, err
 	}
 
-	err = hns.LinkSetUp(host_link)
+	err = hns.LinkSetUp(hostLink)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"Link":  host_link,
+			"Link":  hostLink,
 			"Error": err,
 		}).Error("Failed to set link up.")
 		return nil, err
@@ -185,9 +185,9 @@ Hroutes:
 	staticRoutes = append(staticRoutes, iputil.NetworkID(hunderlay))
 
 	hroute := &netlink.Route{
-		LinkIndex: int_link.Attrs().Index,
+		LinkIndex: intLink.Attrs().Index,
 		Dst:       iputil.NetworkID(hunderlay),
-		Gw:        host_addr.IP,
+		Gw:        hostAddr.IP,
 	}
 
 	log.WithFields(log.Fields{
@@ -206,15 +206,15 @@ Hroutes:
 
 	p2pnet := &p2pNetwork{
 		network:       p2pIPNet,
-		hostIP:        host_addr.IP,
-		selfIP:        int_addr.IP,
+		hostIP:        hostAddr.IP,
+		selfIP:        intAddr.IP,
 		hostNamespace: hns,
 		hostUnderlay:  hunderlay,
-		log: log.WithFields(log.Fields{
+		hostLink: log.WithFields(log.Fields{
 			"p2p": map[string]interface{}{
 				"network": p2pIPNet,
-				"hostIP":  host_addr.IP,
-				"selfIP":  int_addr.IP,
+				"hostIP":  hostAddr.IP,
+				"selfIP":  intAddr.IP,
 			}}),
 	}
 
@@ -224,12 +224,12 @@ Hroutes:
 		go func() {
 			defer hostRouteWG.Done()
 			if iputil.SubnetContainsSubnet(hroute.Dst, sr) {
-				p2pnet.log.WithFields(log.Fields{
+				p2pnet.hostLink.WithFields(log.Fields{
 					"Subnet": sr,
 				}).Debug("Skipping static route to subnet covered by underlay")
 				return
 			}
-			p2pnet.log.WithFields(log.Fields{
+			p2pnet.hostLink.WithFields(log.Fields{
 				"Subnet": sr,
 			}).Debug("Asynchronously adding host route to subnet.")
 			hostRouteWG.Add(1)
@@ -237,27 +237,27 @@ Hroutes:
 		}()
 	}
 
-	p2pnet.log.Debug("Waiting for host route adds to complete.")
+	p2pnet.hostLink.Debug("Waiting for host route adds to complete.")
 	hostRouteWG.Wait()
 	return p2pnet, nil
 }
 
 func (p *p2pNetwork) remove() error {
-	p.log.Debug("Removing p2p network")
-	host_link, err := p.hostNamespace.LinkByName("drouter_veth0")
+	p.hostLink.Debug("Removing p2p network")
+	hostLink, err := p.hostNamespace.LinkByName("drouter_veth0")
 	if err != nil {
-		p.log.WithFields(log.Fields{
+		p.hostLink.WithFields(log.Fields{
 			"LinkName": "drouter_veth0",
 			"Error":    err,
 		}).Error("Failed to get p2p link")
 		return err
 	}
 
-	return p.hostNamespace.LinkDel(host_link)
+	return p.hostNamespace.LinkDel(hostLink)
 }
 
 func (p *p2pNetwork) addHostRoute(sn *net.IPNet) {
-	p.log.WithFields(log.Fields{
+	p.hostLink.WithFields(log.Fields{
 		"Subnet": sn,
 	}).Debug("Adding host route to subnet.")
 	route := &netlink.Route{
@@ -266,7 +266,7 @@ func (p *p2pNetwork) addHostRoute(sn *net.IPNet) {
 		Src: p.hostUnderlay.IP,
 	}
 	if (route.Dst.IP.To4() == nil) != (route.Gw.To4() == nil) {
-		p.log.WithFields(log.Fields{
+		p.hostLink.WithFields(log.Fields{
 			"Destination": route.Dst,
 			"Gateway":     route.Gw,
 		}).Debug("Destination and gateway are different IP family.")
@@ -277,20 +277,20 @@ func (p *p2pNetwork) addHostRoute(sn *net.IPNet) {
 	err := p.hostNamespace.RouteAdd(route)
 	if err != nil {
 		log.Error(err)
-		p.log.WithFields(log.Fields{
+		p.hostLink.WithFields(log.Fields{
 			"Destination": route.Dst,
 			"Gateway":     route.Gw,
 			"Error":       err,
 		}).Error("Failed to add host route.")
 	}
-	p.log.WithFields(log.Fields{
+	p.hostLink.WithFields(log.Fields{
 		"Destination": route.Dst,
 		"Gateway":     route.Gw,
 	}).Error("Successfully added host route.")
 }
 
 func (p *p2pNetwork) delHostRoute(sn *net.IPNet) {
-	p.log.WithFields(log.Fields{
+	p.hostLink.WithFields(log.Fields{
 		"Subnet": sn,
 	}).Debug("Deleting host route to subnet.")
 	route := &netlink.Route{
@@ -299,7 +299,7 @@ func (p *p2pNetwork) delHostRoute(sn *net.IPNet) {
 	}
 	if (route.Dst.IP.To4() == nil) != (route.Gw.To4() == nil) {
 		// Dst is a different IP family
-		p.log.WithFields(log.Fields{
+		p.hostLink.WithFields(log.Fields{
 			"Destination": route.Dst,
 			"Gateway":     route.Gw,
 		}).Debug("Destination and gateway are different IP family.")
@@ -308,13 +308,13 @@ func (p *p2pNetwork) delHostRoute(sn *net.IPNet) {
 
 	err := p.hostNamespace.RouteDel(route)
 	if err != nil {
-		p.log.WithFields(log.Fields{
+		p.hostLink.WithFields(log.Fields{
 			"Destination": route.Dst,
 			"Gateway":     route.Gw,
 			"Error":       err,
 		}).Error("Failed to delete host route.")
 	}
-	p.log.WithFields(log.Fields{
+	p.hostLink.WithFields(log.Fields{
 		"Destination": route.Dst,
 		"Gateway":     route.Gw,
 	}).Error("Successfully deleted host route.")
