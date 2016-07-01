@@ -18,7 +18,7 @@ install:
   - $GOPATH/bin/glide install
 
 before_script:
-  - $GOPATH/gometalinter
+  - $GOPATH/bin/gometalinter
   - docker build -t droutertest -f ./Dockertest .
 
 script:
