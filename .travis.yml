@@ -6,12 +6,11 @@ before_install:
   - sudo apt-get -o Dpkg::Options::="--force-confnew" install -y docker-engine
   - docker pull alpine
   - docker build -t droutertest -f ./Dockertest .
+  - go get -u github.com/alecthomas/gometalinter
+  - $GOPATH/bin/gometalinter --install --update
 
 before_script:
-  - ! gofmt -d main.go drouter/**.go 2>&1 | read
-  - go vet . ./drouter
-  - go tool vet -shadow=true main.go
-  - go tool vet -shadow=true ./drouter/
+  - gometalinter
 
 script:
   - docker run -it --privileged --rm --pid=host -v /var/run/docker.sock:/var/run/docker.sock -e TRAVIS_JOB_ID=$TRAVIS_JOB_ID -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST droutertest '$GOPATH/bin/goveralls -service=travis-ci ./drouter'
