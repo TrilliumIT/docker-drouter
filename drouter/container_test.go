@@ -2,11 +2,10 @@ package drouter
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
-	//log "github.com/Sirupsen/logrus"
-	logtest "github.com/Sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -20,7 +19,7 @@ const (
 	ContImage = "alpine"
 )
 
-func createContainer(cn, n string, t *testing.T) string {
+func createContainer(cn int, n string) (*container, error) {
 	r, err := dc.ContainerCreate(bg,
 		&dockerCTypes.Config{
 			Image:      ContImage,
@@ -32,39 +31,28 @@ func createContainer(cn, n string, t *testing.T) string {
 				n: {},
 			},
 		}, fmt.Sprintf(ContName, cn))
-	require.Equal(t, err, nil, "Error creating container")
-
-	err = dc.ContainerStart(bg, r.ID, dockerTypes.ContainerStartOptions{})
-
-	assert.Equal(t, err, nil, "Error starting container")
 	if err != nil {
-		removeContainer(r.ID, t)
+		return nil, err
 	}
 
-	return r.ID
+	err = dc.ContainerStart(bg, r.ID, dockerTypes.ContainerStartOptions{})
+	if err != nil {
+		err2 := dc.ContainerRemove(bg, r.ID, dockerTypes.ContainerRemoveOptions{})
+		if err2 != nil {
+			return nil, fmt.Errorf("Failed to start: %v\nFailed to remove: %v", err, err2)
+		}
+		return nil, err
+	}
+
+	return newContainerFromID(r.ID)
 }
 
-func removeContainer(id string, t *testing.T) {
-	err := dc.ContainerKill(bg, id, "")
-	require.Nil(t, err, "Error killing container")
-	err = dc.ContainerRemove(bg, id, dockerTypes.ContainerRemoveOptions{})
-	require.Nil(t, err, "Error removing container")
-}
-
-func TestNewContainer(t *testing.T) {
-	assert := assert.New(t)
-
-	n0r := createNetwork(0, true, t)
-	defer removeNetwork(n0r.ID, t)
-
-	cid := createContainer("0", n0r.Name, t)
-	defer removeContainer(cid, t)
-
-	hook := logtest.NewGlobal()
-	defer hook.Reset()
-	_, err := newContainerFromID(cid)
-	assert.Equal(err, nil, "Failed to get container object")
-	checkLogs(hook.Entries, t)
+func (c *container) remove() error {
+	err := dc.ContainerKill(bg, c.id, "")
+	if err != nil && !strings.Contains(err.Error(), "is not running") {
+		return err
+	}
+	return dc.ContainerRemove(bg, c.id, dockerTypes.ContainerRemoveOptions{})
 }
 
 func TestInvalidContainer(t *testing.T) {
@@ -74,20 +62,22 @@ func TestInvalidContainer(t *testing.T) {
 }
 
 func TestNonRunningContainer(t *testing.T) {
-	assert := assert.New(t)
+	require := require.New(t)
 
-	n0r := createNetwork(0, true, t)
-	defer removeNetwork(n0r.ID, t)
+	n0r, err := createNetwork(0, true)
+	require.NoError(err, "Failed to create n0.")
+	defer require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.")
 
-	cid := createContainer("0", n0r.Name, t)
-	defer removeContainer(cid, t)
+	c, err := createContainer(0, n0r.ID)
+	require.NoError(err, "Failed to create c0.")
+	defer require.NoError(c.remove(), "Failed to remove c0.")
 
-	err := dc.ContainerKill(bg, cid, "")
-	assert.Equal(err, nil, "Error stopping container")
+	err = dc.ContainerKill(bg, c.id, "")
+	require.NoError(err, "Error stopping container")
 	time.Sleep(1 * time.Second)
 
-	c, err := newContainerFromID(cid)
-	assert.Equal(err, nil, "Inspect stopped container should succeed")
+	cStopped, err := newContainerFromID(c.id)
+	require.NoError(err, "Inspect stopped container should succeed")
 
-	assert.Nil(c.handle, "Inspect on stopped container should return nil handle")
+	require.Nil(cStopped.handle, "Inspect on stopped container should return nil handle")
 }
