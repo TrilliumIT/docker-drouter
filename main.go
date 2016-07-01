@@ -7,7 +7,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/TrilliumIT/docker-drouter/drouter"
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 )
 
 const (

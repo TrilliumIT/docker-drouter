@@ -1,8 +1,6 @@
-hash: 2974d2400bb7239cf53b9f4dff9f56d6fb9a87875edf537bdf12af8e7f392a4b
-updated: 2016-06-26T13:17:39.517609327-04:00
+hash: 020ae59b45943f4c33c3153ceb4ca05680520a8cd7a8100e0a71f7a0185a7803
+updated: 2016-07-01T00:11:59.430151809-04:00
 imports:
-- name: github.com/codegangsta/cli
-  version: 4205e9c4ee9672a8df5bb4fe486a8aa07e1e4037
 - name: github.com/docker/distribution
   version: ffbe9b7c635082432c4adb0395b7426ed5081cff
   subpackages:
@@ -51,6 +49,8 @@ imports:
   - require
 - name: github.com/TrilliumIT/iputil
   version: bfe8f86b05dc24446e8577128bdc3e5c2bb5d5c8
+- name: github.com/urfave/cli
+  version: 1efa31f08b9333f1bd4882d61f9d668a70cd902e
 - name: github.com/vdemeester/docker-events
   version: be74d4929ec1ad118df54349fda4b0cba60f849b
 - name: github.com/vishvananda/netlink
