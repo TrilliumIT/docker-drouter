@@ -199,80 +199,64 @@ func Run(opts *DistributedRouterOptions, shutdown <-chan struct{}) error {
 	return dr.start()
 }
 
-func (dr *distributedRouter) start() error {
-	var err error
+func syncNetworks(dr *distributedRouter, learnNetwork chan<- *network) {
+	//we want to sync immediatly the first time
+	timer := time.NewTimer(0)
+	for {
+		select {
+		case <-stopChan:
+			timer.Stop()
+			return
+		case <-timer.C:
+			log.Debug("Syncing networks from docker.")
 
-	if len(transitNetName) > 0 {
-		err = dr.initTransitNet()
-		if err != nil {
-			return err
-		}
-	}
-
-	learnNetwork := make(chan *network)
-	if aggressive {
-		//syncNetworks()
-		go func() {
-			//we want to sync immediatly the first time
-			timer := time.NewTimer(0)
-			for {
-				select {
-				case <-stopChan:
-					timer.Stop()
-					return
-				case <-timer.C:
-					log.Debug("Syncing networks from docker.")
-
-					//get all networks from docker
-					var dockerNets []dockertypes.NetworkResource
-					dockerNets, err = dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
-					if err != nil {
-						logError("Error getting network list", err)
-					}
-
-					//learn the docker networks
-					for _, n := range dockerNets {
-						dn := n
-						go func() {
-							if dn.ID == transitNetID {
-								return
-							}
-
-							//do we know about this network already?
-							drn, ok := dr.getNetwork(dn.ID)
-							if !ok {
-								log.Debugf("newNetwork(%v)", dn)
-								learnNetwork <- newNetwork(&dn)
-								return
-							}
-							if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
-								drn.connect()
-							}
-						}()
-					}
-					//use timer instead of ticker to guarantee a 5 second delay from end to start
-					timer = time.NewTimer(5 * time.Second)
-				}
+			//get all networks from docker
+			dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
+			if err != nil {
+				logError("Error getting network list", err)
 			}
-		}()
-	}
 
-	dockerEvent := make(chan dockerevents.Message)
-	defer close(dockerEvent)
-	if !aggressive {
-		// on startup generate connect events for every container
-		var dockerContainers []dockertypes.Container
-		dockerContainers, err = dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
-		if err != nil {
-			logError("Error getting container list", err)
-			return err
+			//learn the docker networks
+			for _, n := range dockerNets {
+				dn := n
+				go func() {
+					if dn.ID == transitNetID {
+						return
+					}
+
+					//do we know about this network already?
+					drn, ok := dr.getNetwork(dn.ID)
+					if !ok {
+						log.Debugf("newNetwork(%v)", dn)
+						learnNetwork <- newNetwork(&dn)
+						return
+					}
+					if !drn.isConnected() && drn.isDRouter() && !drn.adminDown {
+						drn.connect()
+					}
+				}()
+			}
+			//use timer instead of ticker to guarantee a 5 second delay from end to start
+			timer = time.NewTimer(5 * time.Second)
 		}
-		for _, dc := range dockerContainers {
+	}
+}
+
+func genContainerStartupEvents(dockerEvent chan<- dockerevents.Message) error {
+	// on startup generate connect events for every container
+	dockerContainers, err := dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
+	if err != nil {
+		logError("Error getting container list", err)
+		return err
+	}
+	for _, dcont := range dockerContainers {
+		dc := dcont
+		go func() {
 			if dc.HostConfig.NetworkMode == hostNetworkMode {
-				continue
+				return
 			}
 			if dc.ID == selfContainerID {
-				continue
+				return
 			}
 			ess := dc.NetworkSettings.Networks
 			for _, es := range ess {
@@ -302,27 +286,17 @@ func (dr *distributedRouter) start() error {
 					}
 				}()
 			}
-		}
+		}()
 	}
+	return nil
+}
 
-	// subscribe to real docker events
-	ctx, ctxDone := context.WithCancel(context.Background())
-	dockerEventErr := events.Monitor(ctx, dockerClient, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
-		dockerEvent <- event
-		return
-	})
-
-	routeEventDone := make(chan struct{})
-	defer close(routeEventDone)
-	routeEvent := make(chan netlink.RouteUpdate)
-	err = netlink.RouteSubscribe(routeEvent, routeEventDone)
-	if err != nil {
-		logError("Failed to subscribe to drouter routing table.", err)
-		return err
-	}
-
-	var eventWG sync.WaitGroup
-Main:
+func (dr *distributedRouter) mainLoop(learnNetwork chan *network,
+	dockerEvent <-chan dockerevents.Message,
+	routeEvent <-chan netlink.RouteUpdate,
+	dockerEventErr <-chan error,
+	stopChan <-chan struct{},
+	eventWG *sync.WaitGroup) {
 	for {
 		select {
 		case drn := <-learnNetwork:
@@ -343,7 +317,7 @@ Main:
 			eventWG.Add(1)
 			go func() {
 				defer eventWG.Done()
-				err = dr.processDockerEvent(e, learnNetwork)
+				err := dr.processDockerEvent(e, learnNetwork)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"Event": e,
@@ -358,7 +332,7 @@ Main:
 				if r.Type != syscall.RTM_NEWROUTE {
 					return
 				}
-				err = dr.processRouteAddEvent(&r)
+				err := dr.processRouteAddEvent(&r)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"RouteEvent": r,
@@ -370,9 +344,60 @@ Main:
 			logError("Error recieved from Docker Event Subscription.", e)
 		case <-stopChan:
 			log.Debug("Shutdown request recieved")
-			break Main
+			return
 		}
 	}
+}
+
+func (dr *distributedRouter) start() error {
+	var err error
+
+	if len(transitNetName) > 0 {
+		err = dr.initTransitNet()
+		if err != nil {
+			return err
+		}
+	}
+
+	learnNetwork := make(chan *network)
+	if aggressive {
+		go syncNetworks(dr, learnNetwork)
+	}
+
+	dockerEvent := make(chan dockerevents.Message)
+	defer close(dockerEvent)
+	if !aggressive {
+		err = genContainerStartupEvents(dockerEvent)
+		if err != nil {
+			log.WithField("Error", err).Error("Failed to generate startup events for container")
+			return err
+		}
+	}
+
+	// subscribe to real docker events
+	ctx, ctxDone := context.WithCancel(context.Background())
+	dockerEventErr := events.Monitor(ctx, dockerClient, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
+		dockerEvent <- event
+		return
+	})
+
+	routeEventDone := make(chan struct{})
+	defer close(routeEventDone)
+	routeEvent := make(chan netlink.RouteUpdate)
+	err = netlink.RouteSubscribe(routeEvent, routeEventDone)
+	if err != nil {
+		logError("Failed to subscribe to drouter routing table.", err)
+		return err
+	}
+
+	var eventWG sync.WaitGroup
+
+	dr.mainLoop(learnNetwork,
+		dockerEvent,
+		routeEvent,
+		dockerEventErr,
+		stopChan,
+		&eventWG)
 
 	log.Info("Cleaning Up")
 	eventWG.Wait()
