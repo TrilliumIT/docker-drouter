@@ -10,12 +10,14 @@ services:
 before_install:
   - sudo apt-get -o Dpkg::Options::="--force-confnew" install -y docker-engine
   - docker pull alpine
-  - docker build -t droutertest -f ./Dockertest .
   - go get -u github.com/alecthomas/gometalinter
   - $GOPATH/bin/gometalinter --install --update
+  - go get github.com/Masterminds/glide
+  - $GOPATH/bin/glide install
 
 before_script:
-  - gometalinter
+  - $GOPATH/gometalinter
+  - docker build -t droutertest -f ./Dockertest .
 
 script:
   - docker run -it --privileged --rm --pid=host -v /var/run/docker.sock:/var/run/docker.sock -e TRAVIS_JOB_ID=$TRAVIS_JOB_ID -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST droutertest '$GOPATH/bin/goveralls -service=travis-ci ./drouter'
