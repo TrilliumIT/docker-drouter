@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	GATEWAY_OFFSET = 100
+	gatewayOffset = 100
 )
 
 type container struct {
@@ -283,7 +283,7 @@ func (c *container) delRoutesVia(to, via *net.IPNet) {
 		return
 	}
 
-	var altgw net.IP = nil
+	var altgw net.IP
 	for _, gw := range gws {
 		if via != nil && !via.Contains(gw) {
 			c.log.WithFields(log.Fields{
@@ -336,7 +336,7 @@ func (c *container) delRoutesVia(to, via *net.IPNet) {
 				continue
 			}
 			if altgw == nil && r.Dst == nil {
-				c.offsetGateways(GATEWAY_OFFSET * -1)
+				c.offsetGateways(gatewayOffset * -1)
 			}
 			if altgw != nil {
 				c.addRouteVia(r.Dst, altgw)
@@ -362,7 +362,7 @@ func (c *container) setGatewayTo(gateway net.IP) error {
 		"Gateway": gateway,
 	}).Debug("Setting gateway.")
 
-	c.offsetGateways(GATEWAY_OFFSET)
+	c.offsetGateways(gatewayOffset)
 
 	if gateway == nil || gateway.Equal(net.IP{}) {
 		c.log.WithFields(log.Fields{
@@ -454,7 +454,7 @@ func (c *container) disconnectEvent(drn *network) error {
 			continue
 		}
 
-		for n, _ := range dc.NetworkSettings.Networks {
+		for n := range dc.NetworkSettings.Networks {
 			if n == drn.Name {
 				c.log.WithFields(log.Fields{
 					"net-container": map[string]interface{}{

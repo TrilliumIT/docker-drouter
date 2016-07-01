@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	ADD_ROUTE = true
-	DEL_ROUTE = false
+	addRoute = true
+	delRoute = false
 )
 
 func logError(msg string, err error) {
@@ -165,9 +165,9 @@ func modifyRoute(ar *net.IPNet, action bool) error {
 				}
 
 				switch action {
-				case ADD_ROUTE:
+				case addRoute:
 					c.addAllRoutes()
-				case DEL_ROUTE:
+				case delRoute:
 					c.delRoutesVia(nil, ar)
 				}
 				return
@@ -194,9 +194,9 @@ func modifyRoute(ar *net.IPNet, action bool) error {
 			}
 
 			switch action {
-			case ADD_ROUTE:
+			case addRoute:
 				c.addRoute(ar)
-			case DEL_ROUTE:
+			case delRoute:
 				c.delRoutesVia(ar, nil)
 			}
 		}()

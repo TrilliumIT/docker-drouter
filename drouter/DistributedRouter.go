@@ -540,7 +540,7 @@ func (dr *distributedRouter) processRouteAddEvent(ru *netlink.RouteUpdate) error
 		p2p.addHostRoute(ru.Dst)
 	}
 
-	modifyRoute(ru.Dst, ADD_ROUTE)
+	modifyRoute(ru.Dst, addRoute)
 
 	return nil
 }
