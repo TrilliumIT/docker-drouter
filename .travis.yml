@@ -13,6 +13,8 @@ before_install:
   - go get -u github.com/alecthomas/gometalinter
   - $GOPATH/bin/gometalinter --install --update
   - go get github.com/Masterminds/glide
+
+install:
   - $GOPATH/bin/glide install
 
 before_script:
