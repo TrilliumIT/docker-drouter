@@ -14,10 +14,10 @@ RUN mkdir -p ${SRC_ROOT}
 WORKDIR ${SRC_ROOT}
 
 # Get glide first, to cache glide if glide doesn't change
-ADD ./glide.* ./vendor ${SRC_ROOT}/
-RUN $GOPATH/bin/glide install
+#ADD ./glide.* ./vendor ${SRC_ROOT}/
 
 # Used to only go get if sources change.
 ADD . ${SRC_ROOT}/
+RUN $GOPATH/bin/glide install
 
 ENTRYPOINT ["sh", "-c"]
