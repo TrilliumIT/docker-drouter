@@ -63,13 +63,19 @@ func getSelfContainer() (*dockertypes.ContainerJSON, error) {
 		log.Error("Error getting cgroups.")
 		return nil, err
 	}
-	defer cgroup.Close()
+	defer func() {
+		err = cgroup.Close()
+		if err != nil {
+			log.WithField("Error", err).Error("Failed to close cgroups")
+		}
+	}()
 
 	scanner := bufio.NewScanner(cgroup)
 	for scanner.Scan() {
 		line := strings.Split(scanner.Text(), "/")
 		id := line[len(line)-1]
-		containerInfo, err := dockerClient.ContainerInspect(context.Background(), id)
+		var cjson dockertypes.ContainerJSON
+		cjson, err = dockerClient.ContainerInspect(context.Background(), id)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"ID":    id,
@@ -77,7 +83,7 @@ func getSelfContainer() (*dockertypes.ContainerJSON, error) {
 			}).Error("Failed to inspect container")
 			return nil, err
 		}
-		return &containerInfo, nil
+		return &cjson, nil
 	}
 	err = fmt.Errorf("Container not found")
 	logError("Failed to get self container", err)
@@ -145,7 +151,7 @@ func modifyRoute(ar *net.IPNet, action bool) error {
 		modRouteWG.Add(1)
 		go func() {
 			defer modRouteWG.Done()
-			if dc.HostConfig.NetworkMode == "host" {
+			if dc.HostConfig.NetworkMode == hostNetworkMode {
 				return
 			}
 			if dc.ID == selfContainerID {
@@ -166,7 +172,10 @@ func modifyRoute(ar *net.IPNet, action bool) error {
 
 				switch action {
 				case addRoute:
-					c.addAllRoutes()
+					err := c.addAllRoutes()
+					if err != nil {
+						c.logError("Failed to add all routes.", err)
+					}
 				case delRoute:
 					c.delRoutesVia(nil, ar)
 				}
