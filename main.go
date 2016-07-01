@@ -1,12 +1,13 @@
 package main
 
 import (
-	log "github.com/Sirupsen/logrus"
-	"github.com/TrilliumIT/docker-drouter/drouter"
-	"github.com/codegangsta/cli"
 	"os"
 	"os/signal"
 	"syscall"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/TrilliumIT/docker-drouter/drouter"
+	"github.com/codegangsta/cli"
 )
 
 const (
@@ -81,7 +82,10 @@ func main() {
 		flagTransitNet,
 	}
 	app.Action = Run
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Run initializes the driver

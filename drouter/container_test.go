@@ -29,7 +29,7 @@ func createContainer(cn, n string, t *testing.T) string {
 		&dockerCTypes.HostConfig{},
 		&dockerNTypes.NetworkingConfig{
 			EndpointsConfig: map[string]*dockerNTypes.EndpointSettings{
-				n: &dockerNTypes.EndpointSettings{},
+				n: {},
 			},
 		}, fmt.Sprintf(ContName, cn))
 	require.Equal(t, err, nil, "Error creating container")
@@ -45,9 +45,10 @@ func createContainer(cn, n string, t *testing.T) string {
 }
 
 func removeContainer(id string, t *testing.T) {
-	dc.ContainerKill(bg, id, "")
-	err := dc.ContainerRemove(bg, id, dockerTypes.ContainerRemoveOptions{})
-	require.Equal(t, err, nil, "Error removing container")
+	err := dc.ContainerKill(bg, id, "")
+	require.Nil(t, err, "Error killing container")
+	err = dc.ContainerRemove(bg, id, dockerTypes.ContainerRemoveOptions{})
+	require.Nil(t, err, "Error removing container")
 }
 
 func TestNewContainer(t *testing.T) {

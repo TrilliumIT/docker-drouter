@@ -2,6 +2,12 @@ package drouter
 
 import (
 	"fmt"
+	"net"
+	"os"
+	"sync"
+	"syscall"
+	"time"
+
 	log "github.com/Sirupsen/logrus"
 	dockerclient "github.com/docker/engine-api/client"
 	dockertypes "github.com/docker/engine-api/types"
@@ -10,11 +16,10 @@ import (
 	"github.com/vdemeester/docker-events"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/net/context"
-	"net"
-	"os"
-	"sync"
-	"syscall"
-	"time"
+)
+
+const (
+	hostNetworkMode = "host"
 )
 
 var (
@@ -212,14 +217,15 @@ func (dr *distributedRouter) start() error {
 			timer := time.NewTimer(0)
 			for {
 				select {
-				case _ = <-stopChan:
+				case <-stopChan:
 					timer.Stop()
 					return
-				case _ = <-timer.C:
+				case <-timer.C:
 					log.Debug("Syncing networks from docker.")
 
 					//get all networks from docker
-					dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
+					var dockerNets []dockertypes.NetworkResource
+					dockerNets, err = dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
 					if err != nil {
 						logError("Error getting network list", err)
 					}
@@ -255,13 +261,14 @@ func (dr *distributedRouter) start() error {
 	defer close(dockerEvent)
 	if !aggressive {
 		// on startup generate connect events for every container
-		dockerContainers, err := dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
+		var dockerContainers []dockertypes.Container
+		dockerContainers, err = dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
 		if err != nil {
 			logError("Error getting container list", err)
 			return err
 		}
 		for _, dc := range dockerContainers {
-			if dc.HostConfig.NetworkMode == "host" {
+			if dc.HostConfig.NetworkMode == hostNetworkMode {
 				continue
 			}
 			if dc.ID == selfContainerID {
@@ -270,7 +277,8 @@ func (dr *distributedRouter) start() error {
 			ess := dc.NetworkSettings.Networks
 			for _, es := range ess {
 				if es.NetworkID == "" {
-					cjson, err := dockerClient.ContainerInspect(context.Background(), dc.ID)
+					var cjson dockertypes.ContainerJSON
+					cjson, err = dockerClient.ContainerInspect(context.Background(), dc.ID)
 					if err != nil {
 						log.Errorf("Error inspecting container %v with id %v.", dc.Names, dc.ID)
 						continue
@@ -360,7 +368,7 @@ Main:
 			}()
 		case e := <-dockerEventErr:
 			logError("Error recieved from Docker Event Subscription.", e)
-		case _ = <-stopChan:
+		case <-stopChan:
 			log.Debug("Shutdown request recieved")
 			break Main
 		}
@@ -540,9 +548,7 @@ func (dr *distributedRouter) processRouteAddEvent(ru *netlink.RouteUpdate) error
 		p2p.addHostRoute(ru.Dst)
 	}
 
-	modifyRoute(ru.Dst, addRoute)
-
-	return nil
+	return modifyRoute(ru.Dst, addRoute)
 }
 
 func (dr *distributedRouter) getNetwork(id string) (*network, bool) {

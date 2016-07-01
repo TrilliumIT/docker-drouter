@@ -37,7 +37,10 @@ func TestMain(m *testing.M) {
 	defer func() { os.Exit(exitStatus) }()
 
 	resetGlobals()
-	cleanup()
+	err := cleanup()
+	if err != nil {
+		panic(err)
+	}
 
 	testNets = make([]*net.IPNet, 4)
 	for i := range testNets {
@@ -47,33 +50,21 @@ func TestMain(m *testing.M) {
 
 	exitStatus = m.Run()
 
-	cleanup()
+	err = cleanup()
+	if err != nil {
+		panic(err)
+	}
 
 	// rejoin bridge, required to upload coverage
-	dc.NetworkConnect(bg, "bridge", selfContainerID, &dockerNTypes.EndpointSettings{})
+	err = dc.NetworkConnect(bg, "bridge", selfContainerID, &dockerNTypes.EndpointSettings{})
+	if err != nil {
+		panic(err)
+	}
 	fmt.Println("End TestMain().")
 }
 
-func TestBasicAggressive(t *testing.T) {
-	opts := &DistributedRouterOptions{
-		IPOffset:         0,
-		Aggressive:       true,
-		HostShortcut:     false,
-		ContainerGateway: false,
-		HostGateway:      false,
-		Masquerade:       false,
-		P2PAddr:          "172.29.255.252/30",
-		StaticRoutes:     make([]string, 0),
-		TransitNet:       "",
-		InstanceName:     DrInst,
-	}
-	cleanup()
-	runScenarioV4(opts, t)
-	cleanup()
-}
-
-func TestBasicNonAggressive(t *testing.T) {
-	opts := &DistributedRouterOptions{
+func defaultOpts() *DistributedRouterOptions {
+	return &DistributedRouterOptions{
 		IPOffset:         0,
 		Aggressive:       false,
 		HostShortcut:     false,
@@ -85,18 +76,38 @@ func TestBasicNonAggressive(t *testing.T) {
 		TransitNet:       "",
 		InstanceName:     DrInst,
 	}
-	cleanup()
-	runScenarioV4(opts, t)
-	cleanup()
 }
 
-func cleanup() {
+func TestBasicAggressive(t *testing.T) {
+	opts := defaultOpts()
+	opts.Aggressive = true
+
+	require.Nil(t, cleanup(), "Failed to clean up.")
+	runScenarioV4(opts, t)
+	require.Nil(t, cleanup(), "Failed to clean up.")
+}
+
+func TestBasicNonAggressive(t *testing.T) {
+	opts := defaultOpts()
+
+	require.Nil(t, cleanup(), "Failed to clean up.")
+	runScenarioV4(opts, t)
+	require.Nil(t, cleanup(), "Failed to clean up.")
+}
+
+func cleanup() error {
 	dockerContainers, _ := dc.ContainerList(bg, dockerTypes.ContainerListOptions{All: true})
 	for _, c := range dockerContainers {
 		for _, name := range c.Names {
 			if strings.HasPrefix(name, "/drntest_c") {
-				dc.ContainerKill(bg, c.ID, "")
-				dc.ContainerRemove(bg, c.ID, dockerTypes.ContainerRemoveOptions{Force: true})
+				err := dc.ContainerKill(bg, c.ID, "")
+				if err != nil {
+					return err
+				}
+				err = dc.ContainerRemove(bg, c.ID, dockerTypes.ContainerRemoveOptions{Force: true})
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -104,11 +115,18 @@ func cleanup() {
 	for _, dn := range dockerNets {
 		if strings.HasPrefix(dn.Name, "drntest_n") {
 			for c := range dn.Containers {
-				dc.NetworkDisconnect(bg, dn.ID, c, true)
+				err := dc.NetworkDisconnect(bg, dn.ID, c, true)
+				if err != nil {
+					return err
+				}
 			}
-			dc.NetworkRemove(bg, dn.ID)
+			err := dc.NetworkRemove(bg, dn.ID)
+			if err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 func resetGlobals() {
@@ -137,7 +155,10 @@ func resetGlobals() {
 		Aggressive:   true,
 		InstanceName: DrInst,
 	}
-	initVars(opts)
+	err := initVars(opts)
+	if err != nil {
+		panic(err)
+	}
 
 	dc = dockerClient
 	bg = context.Background()
@@ -164,7 +185,7 @@ func testRunClose(t *testing.T) {
 	timeout := time.NewTimer(10 * time.Second)
 	var err error
 	select {
-	case _ = <-timeout.C:
+	case <-timeout.C:
 		close(quit)
 		err = <-ech
 	case err = <-ech:
@@ -221,7 +242,7 @@ func runScenarioV4(opts *DistributedRouterOptions, t *testing.T) {
 
 	startDelay := time.NewTimer(20 * time.Second)
 	select {
-	case _ = <-startDelay.C:
+	case <-startDelay.C:
 		err = nil
 	case err = <-ech:
 	}

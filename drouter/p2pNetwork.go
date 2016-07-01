@@ -34,7 +34,11 @@ func newP2PNetwork(p2paddr string) (*p2pNetwork, error) {
 	hostLink, err := hns.LinkByName("drouter_veth0")
 	if err == nil {
 		//exists already... delete
-		hns.LinkDel(hostLink)
+		err = hns.LinkDel(hostLink)
+		if err != nil {
+			log.WithFields(log.Fields{"Error": err}).Error("Failed to delete existing p2p interface")
+			return nil, err
+		}
 	}
 	err = nil
 
@@ -152,7 +156,8 @@ Hroutes:
 		if r.Gw != nil {
 			continue
 		}
-		link, err := hns.LinkByIndex(r.LinkIndex)
+		var link netlink.Link
+		link, err = hns.LinkByIndex(r.LinkIndex)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"LinkIndex": r.LinkIndex,
@@ -160,7 +165,8 @@ Hroutes:
 			}).Error("Failed to get link.")
 			return nil, err
 		}
-		addrs, err := hns.AddrList(link, netlink.FAMILY_V4)
+		var addrs []netlink.Addr
+		addrs, err = hns.AddrList(link, netlink.FAMILY_V4)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"Link":  link,

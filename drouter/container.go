@@ -82,8 +82,7 @@ func (c *container) addAllRoutes() error {
 	c.log.Debug("Adding all routes")
 	if containerGateway {
 		c.log.Debug("Calling replaceGateway")
-		c.replaceGateway()
-		return nil
+		return c.replaceGateway()
 	}
 
 	var routeAddWG sync.WaitGroup
@@ -336,7 +335,10 @@ func (c *container) delRoutesVia(to, via *net.IPNet) {
 				continue
 			}
 			if altgw == nil && r.Dst == nil {
-				c.offsetGateways(gatewayOffset * -1)
+				err = c.offsetGateways(gatewayOffset * -1)
+				if err != nil {
+					c.logError("Failed to offset gateway", err)
+				}
 			}
 			if altgw != nil {
 				c.addRouteVia(r.Dst, altgw)
@@ -362,7 +364,10 @@ func (c *container) setGatewayTo(gateway net.IP) error {
 		"Gateway": gateway,
 	}).Debug("Setting gateway.")
 
-	c.offsetGateways(gatewayOffset)
+	err := c.offsetGateways(gatewayOffset)
+	if err != nil {
+		c.logError("Failed to offset gateways", err)
+	}
 
 	if gateway == nil || gateway.Equal(net.IP{}) {
 		c.log.WithFields(log.Fields{
@@ -372,7 +377,7 @@ func (c *container) setGatewayTo(gateway net.IP) error {
 	}
 
 	route := &netlink.Route{Dst: nil, Gw: gateway}
-	err := c.handle.RouteAdd(route)
+	err = c.handle.RouteAdd(route)
 	if err != nil {
 		c.log.WithFields(log.Fields{
 			"Gateway": gateway,
@@ -407,8 +412,7 @@ func (c *container) connectEvent(drn *network) error {
 		c.log.WithFields(log.Fields{
 			"network": drn,
 		}).Debug("Asynchronously replacing container gateway.")
-		c.replaceGateway()
-		return nil
+		return c.replaceGateway()
 	}
 
 	for _, subnet := range drn.Subnets {
@@ -416,8 +420,7 @@ func (c *container) connectEvent(drn *network) error {
 	}
 
 	c.log.Debug("Asynchronously adding all routes to container.")
-	c.addAllRoutes()
-	return nil
+	return c.addAllRoutes()
 }
 
 // called when we detect a container has disconnected from a drouter network
@@ -433,7 +436,10 @@ func (c *container) disconnectEvent(drn *network) error {
 		c.log.WithFields(log.Fields{
 			"PathIP": pIP,
 		}).Debug("Found a remaining path IP, adding all routes.")
-		c.addAllRoutes()
+		err = c.addAllRoutes()
+		if err != nil {
+			c.logError("Failed to add all routes", err)
+		}
 	}
 
 	if aggressive {
@@ -447,7 +453,7 @@ func (c *container) disconnectEvent(drn *network) error {
 		return err
 	}
 	for _, dc := range dockerContainers {
-		if dc.HostConfig.NetworkMode == "host" {
+		if dc.HostConfig.NetworkMode == hostNetworkMode {
 			continue
 		}
 		if dc.ID == selfContainerID {
@@ -468,7 +474,7 @@ func (c *container) disconnectEvent(drn *network) error {
 	}
 
 	select {
-	case _ = <-stopChan:
+	case <-stopChan:
 		c.log.WithFields(log.Fields{
 			"network": drn,
 		}).Debug("Shutdown detected.")

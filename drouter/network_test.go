@@ -31,7 +31,7 @@ func createNetwork(n int, dr bool, t *testing.T) dockerTypes.NetworkResource {
 		Options: opts,
 		IPAM: dockerNTypes.IPAM{
 			Config: []dockerNTypes.IPAMConfig{
-				dockerNTypes.IPAMConfig{
+				{
 					Subnet:  fmt.Sprintf(NetIPNet, n*8),
 					Gateway: fmt.Sprintf(NetGw, n*8+1),
 				},
@@ -227,11 +227,11 @@ func createMultiSubnetNetwork(n int, dr bool, t *testing.T) dockerTypes.NetworkR
 		Options: opts,
 		IPAM: dockerNTypes.IPAM{
 			Config: []dockerNTypes.IPAMConfig{
-				dockerNTypes.IPAMConfig{
+				{
 					Subnet:  fmt.Sprintf(NetIPNet, n*8),
 					Gateway: fmt.Sprintf(NetGw, n*8+1),
 				},
-				dockerNTypes.IPAMConfig{
+				{
 					Subnet:  fmt.Sprintf("192.168.243.%v/29", n*8),
 					Gateway: fmt.Sprintf("192.168.243.%v", n*8+1),
 				},
