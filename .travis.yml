@@ -7,5 +7,11 @@ before_install:
   - docker pull alpine
   - docker build -t droutertest -f ./Dockertest .
 
+before_script:
+  - ! gofmt -d main.go drouter/**.go 2>&1 | read
+  - go vet . ./drouter
+  - go tool vet -shadow=true main.go
+  - go tool vet -shadow=true ./drouter/
+
 script:
   - docker run -it --privileged --rm --pid=host -v /var/run/docker.sock:/var/run/docker.sock -e TRAVIS_JOB_ID=$TRAVIS_JOB_ID -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST droutertest '$GOPATH/bin/goveralls -service=travis-ci ./drouter'
