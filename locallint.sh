@@ -1,0 +1,3 @@
+#!/bin/sh
+go build -i github.com/TrilliumIT/docker-drouter
+gometalinter --vendor --deadline 120s --skip=$(dirname $0)/vendor $(dirname $0) $(dirname $0)/...

@@ -1,5 +1,5 @@
 hash: 020ae59b45943f4c33c3153ceb4ca05680520a8cd7a8100e0a71f7a0185a7803
-updated: 2016-07-01T00:11:59.430151809-04:00
+updated: 2016-07-01T07:45:03.359347217-04:00
 imports:
 - name: github.com/docker/distribution
   version: ffbe9b7c635082432c4adb0395b7426ed5081cff
