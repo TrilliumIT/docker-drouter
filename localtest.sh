@@ -1,3 +1,4 @@
+#!/bin/sh
 BASEDIR=$(realpath $(dirname "$0"))
 if [ -e $BASEDIR/coverage/cover.out ]; then
 	sudo rm -f $BASEDIR/coverage/cover.out

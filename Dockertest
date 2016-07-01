@@ -14,7 +14,7 @@ RUN mkdir -p ${SRC_ROOT}
 WORKDIR ${SRC_ROOT}
 
 # Get glide first, to cache glide if glide doesn't change
-ADD ./glide.* ${SRC_ROOT}/
+ADD ./glide.* ./vendor ${SRC_ROOT}/
 RUN $GOPATH/bin/glide install
 
 # Used to only go get if sources change.
