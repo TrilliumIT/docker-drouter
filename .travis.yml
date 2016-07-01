@@ -2,6 +2,9 @@ language: go
 go: 
   - 1.6
 
+env:
+  - GO15VENDOREXPERIMENT=1
+
 sudo: required
 
 services:
@@ -18,8 +21,8 @@ install:
   - $GOPATH/bin/glide install
 
 before_script:
-  - $GOPATH/bin/gometalinter
   - docker build -t droutertest -f ./Dockertest .
 
 script:
+  - $GOPATH/bin/gometalinter
   - docker run -it --privileged --rm --pid=host -v /var/run/docker.sock:/var/run/docker.sock -e TRAVIS_JOB_ID=$TRAVIS_JOB_ID -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST droutertest '$GOPATH/bin/goveralls -service=travis-ci ./drouter'
