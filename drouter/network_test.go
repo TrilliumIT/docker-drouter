@@ -56,7 +56,7 @@ func TestNetworkConnect(t *testing.T) {
 
 	n0r, err := createNetwork(0, true)
 	require.NoError(err, "Failed to create n0.")
-	defer require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.")
+	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
 	hook := logtest.NewGlobal()
 	defer hook.Reset()
@@ -85,7 +85,7 @@ func testIPOffset(ipo int, exp string, t *testing.T) {
 
 	n0r, err := createNetwork(0, true)
 	require.NoError(err, "Failed to create n0.")
-	defer require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.")
+	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
 	hook := logtest.NewGlobal()
 	defer hook.Reset()
@@ -106,7 +106,7 @@ func TestMultipleConnect(t *testing.T) {
 
 	n0r, err := createNetwork(0, true)
 	require.NoError(err, "Failed to create n0.")
-	defer require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.")
+	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
 	hook := logtest.NewGlobal()
 	defer hook.Reset()
@@ -126,7 +126,7 @@ func TestIsConnected(t *testing.T) {
 
 	n0r, err := createNetwork(0, true)
 	require.NoError(err, "Failed to create n0.")
-	defer require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.")
+	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
 	hook := logtest.NewGlobal()
 	n0 := newNetwork(n0r)
@@ -157,7 +157,7 @@ func testIsDrouter(flag bool, t *testing.T) {
 
 	n0r, err := createNetwork(0, flag)
 	require.NoError(err, "Failed to create n0.")
-	defer require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.")
+	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
 	n0 := newNetwork(n0r)
 
@@ -171,7 +171,7 @@ func TestIsDrouterTransit(t *testing.T) {
 
 	n0r, err := createNetwork(0, false)
 	require.NoError(err, "Failed to create n0.")
-	defer require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.")
+	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
 	transitNetID = n0r.ID
 	n0 := newNetwork(n0r)
@@ -186,7 +186,7 @@ func TestAdminDownNonAggressive(t *testing.T) {
 
 	n0r, err := createNetwork(0, true)
 	require.NoError(err, "Failed to create n0.")
-	defer require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.")
+	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
 	transitNetID = n0r.ID
 	aggressive = false
@@ -204,7 +204,7 @@ func TestAdminDownAggressive(t *testing.T) {
 
 	n0r, err := createNetwork(0, true)
 	require.NoError(err, "Failed to create n0.")
-	defer require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.")
+	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
 	transitNetID = n0r.ID
 	aggressive = true

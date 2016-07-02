@@ -32,7 +32,7 @@ type simulation struct {
 func (st *simulation) runV4() error {
 	resetGlobals()
 	st.require.NoError(cleanup(), "Failed to run cleanup().")
-	defer st.require.NoError(cleanup(), "Failed to run cleanup().")
+	defer func() { st.require.NoError(cleanup(), "Failed to run cleanup().") }()
 	defer resetGlobals()
 
 	st.c = make([]*container, 4)
@@ -46,14 +46,14 @@ func (st *simulation) runV4() error {
 	for i := 0; i < 3; i++ {
 		st.n[i], err = createNetwork(i, i != 0)
 		st.require.NoError(err, "Failed to create n%v.", i)
-		defer st.require.NoError(dc.NetworkRemove(bg, st.n[i].ID), "Failed to remove n%v.", i)
+		defer func() { st.require.NoError(dc.NetworkRemove(bg, st.n[i].ID), "Failed to remove n%v.", i) }()
 	}
 
 	//create first 2 containers
 	fmt.Println("Creating containers 0-1.")
 	for i := 0; i < 2; i++ {
 		st.c[i], err = createContainer(i, st.n[i].ID)
-		defer st.assert.NoError(st.c[i].remove(), "Failed to remove c%v.", i)
+		defer func() { st.assert.NoError(st.c[i].remove(), "Failed to remove c%v.", i) }()
 		st.assert.NoError(err, "Failed to get container object for c%v.", i)
 	}
 
@@ -111,7 +111,7 @@ func (st *simulation) runV4() error {
 
 	st.n[3], err = createNetwork(3, true)
 	st.assert.NoError(err, "Failed to create n3.")
-	defer st.assert.NoError(dc.NetworkRemove(bg, st.n[3].ID), "Failed to remove n3.")
+	defer func() { st.assert.NoError(dc.NetworkRemove(bg, st.n[3].ID), "Failed to remove n3.") }()
 
 	//sleep to give aggressive time to connect to n3
 	time.Sleep(10 * time.Second)
