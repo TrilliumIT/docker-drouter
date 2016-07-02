@@ -66,11 +66,11 @@ func TestNonRunningContainer(t *testing.T) {
 
 	n0r, err := createNetwork(0, true)
 	require.NoError(err, "Failed to create n0.")
-	defer require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.")
+	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
 	c, err := createContainer(0, n0r.ID)
 	require.NoError(err, "Failed to create c0.")
-	defer require.NoError(c.remove(), "Failed to remove c0.")
+	defer func() { require.NoError(c.remove(), "Failed to remove c0.") }()
 
 	err = dc.ContainerKill(bg, c.id, "")
 	require.NoError(err, "Error stopping container")
