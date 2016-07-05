@@ -227,6 +227,7 @@ Hroutes:
 	var hostRouteWG sync.WaitGroup
 	for _, r := range staticRoutes {
 		sr := r
+		hostRouteWG.Add(1)
 		go func() {
 			defer hostRouteWG.Done()
 			if iputil.SubnetContainsSubnet(hroute.Dst, sr) {
@@ -238,7 +239,6 @@ Hroutes:
 			p2pnet.hostLink.WithFields(log.Fields{
 				"Subnet": sr,
 			}).Debug("Asynchronously adding host route to subnet.")
-			hostRouteWG.Add(1)
 			p2pnet.addHostRoute(sr)
 		}()
 	}
