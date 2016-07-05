@@ -37,10 +37,6 @@ func createContainer(cn int, n string) (*container, error) {
 
 	err = dc.ContainerStart(bg, r.ID, dockerTypes.ContainerStartOptions{})
 	if err != nil {
-		err2 := dc.ContainerRemove(bg, r.ID, dockerTypes.ContainerRemoveOptions{})
-		if err2 != nil {
-			return nil, fmt.Errorf("Failed to start: %v\nFailed to remove: %v", err, err2)
-		}
 		return nil, err
 	}
 
@@ -56,21 +52,25 @@ func (c *container) remove() error {
 }
 
 func TestInvalidContainer(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
 	assert := assert.New(t)
 	_, err := newContainerFromID("gibberish_nonsense")
 	assert.NotEqual(err, nil, "Inspect invalid container should fail")
 }
 
 func TestNonRunningContainer(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
 	require := require.New(t)
 
 	n0r, err := createNetwork(0, true)
 	require.NoError(err, "Failed to create n0.")
-	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
+	//defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
 	c, err := createContainer(0, n0r.ID)
 	require.NoError(err, "Failed to create c0.")
-	defer func() { require.NoError(c.remove(), "Failed to remove c0.") }()
+	//defer func() { require.NoError(c.remove(), "Failed to remove c0.") }()
 
 	err = dc.ContainerKill(bg, c.id, "")
 	require.NoError(err, "Error stopping container")
