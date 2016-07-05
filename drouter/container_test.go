@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	log "github.com/Sirupsen/logrus"
 	dockerTypes "github.com/docker/engine-api/types"
 	dockerCTypes "github.com/docker/engine-api/types/container"
 	dockerNTypes "github.com/docker/engine-api/types/network"
@@ -19,6 +20,35 @@ const (
 	ContImage = "alpine"
 )
 
+func testContainerBug(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+	require := require.New(t)
+
+	s := 0
+	fts := 0
+	runs := 100
+	for i := 0; i < runs; i++ {
+		require.NoError(cleanup(), "Failed to cleanup test %v", i)
+		n0r, err := createNetwork(0, true)
+		require.NoError(err, "Failed to create n0 test %v", i)
+		c, err := createContainer(0, n0r.ID)
+		if err == nil {
+			t.Logf("test %v succeeded.\n", i)
+			c.remove()
+			s++
+		}
+		if c != nil && err != nil {
+			t.Logf("test %v failed to start.\n", i)
+			fts++
+			c.remove()
+		}
+		require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0. test %v", i)
+	}
+	t.Logf("%v/%v succeeded.\n", s, runs)
+	t.Logf("%v/%v failed to start.\n", fts, runs)
+	require.Equal(runs, s, "Some failed")
+}
+
 func createContainer(cn int, n string) (*container, error) {
 	r, err := dc.ContainerCreate(bg,
 		&dockerCTypes.Config{
@@ -26,18 +56,27 @@ func createContainer(cn int, n string) (*container, error) {
 			Entrypoint: []string{"/bin/sleep", "600"},
 		},
 		&dockerCTypes.HostConfig{},
-		&dockerNTypes.NetworkingConfig{
-			EndpointsConfig: map[string]*dockerNTypes.EndpointSettings{
-				n: {},
-			},
-		}, fmt.Sprintf(ContName, cn))
+		&dockerNTypes.NetworkingConfig{}, fmt.Sprintf(ContName, cn))
 	if err != nil {
 		return nil, err
 	}
 
+	err = dc.NetworkConnect(bg, n, r.ID, &dockerNTypes.EndpointSettings{})
+	if err != nil {
+		c, err2 := newContainerFromID(r.ID)
+		if err2 != nil {
+			c.log.WithFields(log.Fields{"Error": err2}).Error("Failed to inspect container after failed network connect.")
+		}
+		return c, err
+	}
+
 	err = dc.ContainerStart(bg, r.ID, dockerTypes.ContainerStartOptions{})
 	if err != nil {
-		return nil, err
+		c, err2 := newContainerFromID(r.ID)
+		if err2 != nil {
+			c.log.WithFields(log.Fields{"Error": err2}).Error("Failed to inspect container after failed container start.")
+		}
+		return c, err
 	}
 
 	return newContainerFromID(r.ID)
