@@ -20,7 +20,7 @@ const (
 	ContImage = "alpine"
 )
 
-func testContainerBug(t *testing.T) {
+func TestContainerBug(t *testing.T) {
 	require.NoError(t, cleanup(), "Failed to cleanup()")
 	require := require.New(t)
 
@@ -31,7 +31,7 @@ func testContainerBug(t *testing.T) {
 		require.NoError(cleanup(), "Failed to cleanup test %v", i)
 		n0r, err := createNetwork(0, true)
 		require.NoError(err, "Failed to create n0 test %v", i)
-		c, err := createContainer(0, n0r.ID)
+		c, err := createContainer(0, n0r.Name)
 		if err == nil {
 			t.Logf("test %v succeeded.\n", i)
 			c.remove()
@@ -56,18 +56,13 @@ func createContainer(cn int, n string) (*container, error) {
 			Entrypoint: []string{"/bin/sleep", "600"},
 		},
 		&dockerCTypes.HostConfig{},
-		&dockerNTypes.NetworkingConfig{}, fmt.Sprintf(ContName, cn))
+		&dockerNTypes.NetworkingConfig{
+			EndpointsConfig: map[string]*dockerNTypes.EndpointSettings{
+				n: {},
+			},
+		}, fmt.Sprintf(ContName, cn))
 	if err != nil {
 		return nil, err
-	}
-
-	err = dc.NetworkConnect(bg, n, r.ID, &dockerNTypes.EndpointSettings{})
-	if err != nil {
-		c, err2 := newContainerFromID(r.ID)
-		if err2 != nil {
-			c.log.WithFields(log.Fields{"Error": err2}).Error("Failed to inspect container after failed network connect.")
-		}
-		return c, err
 	}
 
 	err = dc.ContainerStart(bg, r.ID, dockerTypes.ContainerStartOptions{})
