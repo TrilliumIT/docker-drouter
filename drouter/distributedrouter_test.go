@@ -139,6 +139,27 @@ func TestNoAggressive(t *testing.T) {
 	require.NoError(st.runV4(), "Scenario failed to run.")
 }
 
+func TestHostShortcut(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
+	assert := assert.New(t)
+	require := require.New(t)
+
+	opts := defaultOpts()
+	opts.HostShortcut = true
+
+	st := simulation{
+		opts:    opts,
+		assert:  assert,
+		require: require,
+		cb:      make(map[int]func()),
+	}
+
+	//TODO, actually, you know, test stuff
+
+	require.NoError(st.runV4(), "Scenario failed to run.")
+}
+
 func cleanup() error {
 	resetGlobals()
 
