@@ -51,6 +51,8 @@ func createNetwork(n int, dr bool) (*dockerTypes.NetworkResource, error) {
 }
 
 func TestNetworkConnect(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -69,16 +71,19 @@ func TestNetworkConnect(t *testing.T) {
 	checkLogs(hook, assert)
 }
 
-func TestIPOffset(t *testing.T) {
+func TestPositiveIPOffset(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
 	testIPOffset(2, "192.168.242.2", t)
 }
 
 func TestNegativeIPOffset(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
 	testIPOffset(-1, "192.168.242.6", t)
 }
 
 func testIPOffset(ipo int, exp string, t *testing.T) {
-	defer resetGlobals()
 	assert := assert.New(t)
 	require := require.New(t)
 	ipOffset = ipo
@@ -101,6 +106,8 @@ func testIPOffset(ipo int, exp string, t *testing.T) {
 }
 
 func TestMultipleConnect(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -121,6 +128,8 @@ func TestMultipleConnect(t *testing.T) {
 }
 
 func TestIsConnected(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -143,15 +152,19 @@ func TestIsConnected(t *testing.T) {
 	checkLogs(hook, assert)
 }
 
-func TestIsDrouterTrue(t *testing.T) {
-	testIsDrouter(true, t)
+func TestIsDRouterTrue(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
+	testIsDRouter(true, t)
 }
 
-func TestIsDrouterFalse(t *testing.T) {
-	testIsDrouter(false, t)
+func TestIsDRouterFalse(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
+	testIsDRouter(false, t)
 }
 
-func testIsDrouter(flag bool, t *testing.T) {
+func testIsDRouter(flag bool, t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -161,11 +174,12 @@ func testIsDrouter(flag bool, t *testing.T) {
 
 	n0 := newNetwork(n0r)
 
-	assert.Equal(flag, n0.isDRouter(), "IsDrouter returns the wrong thing.")
+	assert.Equal(flag, n0.isDRouter(), "IsDRouter returns the wrong thing.")
 }
 
-func TestIsDrouterTransit(t *testing.T) {
-	defer resetGlobals()
+func TestIsDRouterTransit(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -180,7 +194,8 @@ func TestIsDrouterTransit(t *testing.T) {
 }
 
 func TestAdminDownNonAggressive(t *testing.T) {
-	defer resetGlobals()
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -198,7 +213,8 @@ func TestAdminDownNonAggressive(t *testing.T) {
 }
 
 func TestAdminDownAggressive(t *testing.T) {
-	defer resetGlobals()
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
 	assert := assert.New(t)
 	require := require.New(t)
 

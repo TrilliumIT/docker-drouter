@@ -35,12 +35,6 @@ func TestMain(m *testing.M) {
 	exitStatus := 1
 	defer func() { os.Exit(exitStatus) }()
 
-	resetGlobals()
-	err := cleanup()
-	if err != nil {
-		panic(err)
-	}
-
 	testNets = make([]*net.IPNet, 4)
 	for i := range testNets {
 		_, n, _ := net.ParseCIDR(fmt.Sprintf(NetIPNet, i*8))
@@ -49,7 +43,7 @@ func TestMain(m *testing.M) {
 
 	exitStatus = m.Run()
 
-	err = cleanup()
+	err := cleanup()
 	if err != nil {
 		panic(err)
 	}
@@ -78,6 +72,8 @@ func defaultOpts() *DistributedRouterOptions {
 }
 
 func TestDefault(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
 	assert := assert.New(t)
 	require := require.New(t)
 	hook := logtest.NewGlobal()
@@ -106,6 +102,8 @@ func TestDefault(t *testing.T) {
 }
 
 func TestNoAggressive(t *testing.T) {
+	require.NoError(t, cleanup(), "Failed to cleanup()")
+
 	assert := assert.New(t)
 	require := require.New(t)
 	hook := logtest.NewGlobal()
@@ -140,12 +138,14 @@ func TestNoAggressive(t *testing.T) {
 }
 
 func cleanup() error {
+	resetGlobals()
+
 	dockerContainers, _ := dc.ContainerList(bg, dockerTypes.ContainerListOptions{All: true})
 	for _, c := range dockerContainers {
 		for _, name := range c.Names {
 			if strings.HasPrefix(name, "/drntest_c") {
 				err := dc.ContainerKill(bg, c.ID, "")
-				if err != nil {
+				if err != nil && !strings.Contains(err.Error(), "is not running") {
 					return err
 				}
 				err = dc.ContainerRemove(bg, c.ID, dockerTypes.ContainerRemoveOptions{Force: true})
@@ -195,11 +195,7 @@ func resetGlobals() {
 	log.SetLevel(log.InfoLevel)
 
 	//re-init
-	opts := &DistributedRouterOptions{
-		Aggressive:   true,
-		InstanceName: DrInst,
-	}
-	err := initVars(opts)
+	err := initVars(defaultOpts())
 	if err != nil {
 		panic(err)
 	}
