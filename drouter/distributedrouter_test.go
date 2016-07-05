@@ -24,6 +24,7 @@ var (
 	dc       *dockerclient.Client
 	bg       context.Context
 	testNets []*net.IPNet
+	hook     *logtest.Hook
 )
 
 const (
@@ -34,6 +35,8 @@ func TestMain(m *testing.M) {
 	fmt.Println("Begin TestMain().")
 	exitStatus := 1
 	defer func() { os.Exit(exitStatus) }()
+
+	hook = logtest.NewGlobal()
 
 	testNets = make([]*net.IPNet, 4)
 	for i := range testNets {
@@ -76,7 +79,6 @@ func TestDefault(t *testing.T) {
 
 	assert := assert.New(t)
 	require := require.New(t)
-	hook := logtest.NewGlobal()
 
 	opts := defaultOpts()
 
@@ -88,7 +90,7 @@ func TestDefault(t *testing.T) {
 	}
 
 	st.cb[assertInit] = func() {
-		checkLogs(hook, assert)
+		checkLogs(assert)
 
 		drn, ok := st.dr.getNetwork(st.n[0].ID)
 		assert.True(ok, "should have learned n0 by now.")
@@ -106,7 +108,6 @@ func TestNoAggressive(t *testing.T) {
 
 	assert := assert.New(t)
 	require := require.New(t)
-	hook := logtest.NewGlobal()
 
 	opts := defaultOpts()
 	opts.Aggressive = false
@@ -126,8 +127,9 @@ func TestNoAggressive(t *testing.T) {
 			}
 			assert.True(e.Level >= log.WarnLevel, "All logs should be >= Warn, but observed log: ", e)
 		}
-		hook.Reset()
 		assert.Equal(warns, 1, "Should have recieved one warning message for running in Aggressive with no tranist net")
+
+		hook.Reset()
 
 		if drn, ok := st.dr.getNetwork(st.n[2].ID); ok {
 			assert.False(drn.isConnected(), "drouter should not be connected to n2.")
@@ -202,9 +204,10 @@ func resetGlobals() {
 
 	dc = dockerClient
 	bg = context.Background()
+	hook.Reset()
 }
 
-func checkLogs(hook *logtest.Hook, assert *assert.Assertions) {
+func checkLogs(assert *assert.Assertions) {
 	for _, e := range hook.Entries {
 		assert.True(e.Level >= log.InfoLevel, "All logs should be >= Info, but observed log: ", e)
 	}
