@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	logtest "github.com/Sirupsen/logrus/hooks/test"
 	dockerTypes "github.com/docker/engine-api/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,7 +31,6 @@ type simulation struct {
 func (st *simulation) runV4() error {
 	st.c = make([]*container, 4)
 	st.n = make([]*dockerTypes.NetworkResource, 4)
-	hook := logtest.NewGlobal()
 	var err error
 
 	//create first 3 networks
@@ -41,14 +39,16 @@ func (st *simulation) runV4() error {
 	for i := 0; i < 3; i++ {
 		st.n[i], err = createNetwork(i, i != 0)
 		st.require.NoError(err, "Failed to create n%v.", i)
-		//defer func() { st.require.NoError(dc.NetworkRemove(bg, st.n[i].ID), "Failed to remove n%v.", i) }()
+		defer func(n *dockerTypes.NetworkResource) {
+			st.require.NoError(dc.NetworkRemove(bg, n.ID), "Failed to remove n%v.", i)
+		}(st.n[i])
 	}
 
 	//create first 2 containers
 	fmt.Println("Creating containers 0-1.")
 	for i := 0; i < 2; i++ {
-		st.c[i], err = createContainer(i, st.n[i].ID)
-		//defer func(c *container) { st.assert.NoError(c.remove(), "Failed to remove c%v.", i) }(c[i], i)
+		st.c[i], err = createContainer(i, st.n[i].Name)
+		defer func(c *container) { st.assert.NoError(c.remove(), "Failed to remove c%v.", i) }(st.c[i])
 		st.require.NoError(err, "Failed to get container object for c%v.", i)
 	}
 
@@ -92,11 +92,12 @@ func (st *simulation) runV4() error {
 
 	st.assert.Equal(aggressive, handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should have a route to n2 if in aggressive mode.")
 
-	st.c[2], err = createContainer(2, st.n[2].ID)
+	st.c[2], err = createContainer(2, st.n[2].Name)
 	st.require.NoError(err, "Failed to create c2.")
 	time.Sleep(5 * time.Second)
 
-	checkLogs(hook, st.assert)
+	fmt.Printf("Entries: %v\n", len(hook.Entries))
+	checkLogs(st.assert)
 
 	st.assert.False(handleContainsRoute(st.c[1].handle, testNets[0], nil, st.assert), "c1 should not have a route to n0.")
 	st.assert.True(handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should have a route to n2.")
@@ -106,7 +107,7 @@ func (st *simulation) runV4() error {
 
 	st.n[3], err = createNetwork(3, true)
 	st.assert.NoError(err, "Failed to create n3.")
-	//defer func() { st.assert.NoError(dc.NetworkRemove(bg, st.n[3].ID), "Failed to remove n3.") }()
+	defer func() { st.assert.NoError(dc.NetworkRemove(bg, st.n[3].ID), "Failed to remove n3.") }()
 
 	//sleep to give aggressive time to connect to n3
 	time.Sleep(10 * time.Second)
@@ -117,14 +118,19 @@ func (st *simulation) runV4() error {
 	// purposefully remove c2 and make sure c1 looses the route in non-aggressive
 	st.assert.NoError(st.c[2].remove(), "Failed to remove c2.")
 	time.Sleep(5 * time.Second)
-	checkLogs(hook, st.assert)
+	checkLogs(st.assert)
 
 	st.assert.Equal(aggressive, handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should have a route to n2 in aggressive mode.")
 
+	//More simulations here
+
+	//disconnect from n3 and make sure containers lose route in aggressive mode
+
+	//Now test quitting
 	close(quit)
 
 	st.assert.NoError(<-ech, "Error during drouter shutdown.")
-	checkLogs(hook, st.assert)
+	checkLogs(st.assert)
 
 	return nil
 }

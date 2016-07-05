@@ -5,8 +5,6 @@ import (
 	"net"
 	"testing"
 
-	//log "github.com/Sirupsen/logrus"
-	logtest "github.com/Sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -60,15 +58,13 @@ func TestNetworkConnect(t *testing.T) {
 	require.NoError(err, "Failed to create n0.")
 	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
-	hook := logtest.NewGlobal()
-	defer hook.Reset()
 	n0 := newNetwork(n0r)
 
 	n0.connect()
-	checkLogs(hook, assert)
+	checkLogs(assert)
 
 	n0.disconnect()
-	checkLogs(hook, assert)
+	checkLogs(assert)
 }
 
 func TestPositiveIPOffset(t *testing.T) {
@@ -92,8 +88,6 @@ func testIPOffset(ipo int, exp string, t *testing.T) {
 	require.NoError(err, "Failed to create n0.")
 	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
-	hook := logtest.NewGlobal()
-	defer hook.Reset()
 	n0 := newNetwork(n0r)
 	n0.connect()
 	defer n0.disconnect()
@@ -102,7 +96,7 @@ func testIPOffset(ipo int, exp string, t *testing.T) {
 	require.NoError(err, "Error getting routes")
 	assert.True(routes[0].Src.Equal(net.ParseIP(exp)), "IP not what was expected")
 
-	checkLogs(hook, assert)
+	checkLogs(assert)
 }
 
 func TestMultipleConnect(t *testing.T) {
@@ -115,16 +109,14 @@ func TestMultipleConnect(t *testing.T) {
 	require.NoError(err, "Failed to create n0.")
 	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
-	hook := logtest.NewGlobal()
-	defer hook.Reset()
 	n0 := newNetwork(n0r)
 	n0.connect()
 	defer n0.disconnect()
-	checkLogs(hook, assert)
+	checkLogs(assert)
 
 	n0.connect()
 
-	checkLogs(hook, assert)
+	checkLogs(assert)
 }
 
 func TestIsConnected(t *testing.T) {
@@ -137,19 +129,17 @@ func TestIsConnected(t *testing.T) {
 	require.NoError(err, "Failed to create n0.")
 	defer func() { require.NoError(dc.NetworkRemove(bg, n0r.ID), "Failed to remove n0.") }()
 
-	hook := logtest.NewGlobal()
 	n0 := newNetwork(n0r)
-	defer hook.Reset()
 	assert.False(n0.isConnected(), "Network should not be connected")
-	checkLogs(hook, assert)
+	checkLogs(assert)
 
 	n0.connect()
 	assert.True(n0.isConnected(), "Network should be connected")
-	checkLogs(hook, assert)
+	checkLogs(assert)
 
 	n0.disconnect()
 	assert.False(n0.isConnected(), "Network should not be connected")
-	checkLogs(hook, assert)
+	checkLogs(assert)
 }
 
 func TestIsDRouterTrue(t *testing.T) {
