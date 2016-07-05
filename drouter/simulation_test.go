@@ -93,7 +93,7 @@ func (st *simulation) runV4() error {
 	st.assert.Equal(aggressive, handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should have a route to n2 if in aggressive mode.")
 
 	st.c[2], err = createContainer(2, st.n[2].ID)
-	st.assert.NoError(err, "Failed to create c2.")
+	st.require.NoError(err, "Failed to create c2.")
 	time.Sleep(5 * time.Second)
 
 	checkLogs(hook, st.assert)
