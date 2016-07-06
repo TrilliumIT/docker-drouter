@@ -19,12 +19,12 @@ func TestDefault(t *testing.T) {
 		st.assertAggressiveInit()
 		st.assertSpecificRoutesOnInit()
 	}
-
 	st.cb.assertC2Start = st.assertSpecificRoutesOnC2Start
 	st.cb.assertN3Add = func() {
 		st.assertAggressiveN3Add()
 		st.assertSpecificRoutesOnN3Add()
 	}
+	st.cb.assertN3Remove = st.assertSpecificRoutesOnN3Remove
 
 	st.require.NoError(st.runV4(), "Scenario failed to run.")
 }
@@ -51,9 +51,9 @@ func TestNoAggressive(t *testing.T) {
 
 		st.assertSpecificRoutesOnInit()
 	}
-
 	st.cb.assertC2Start = st.assertSpecificRoutesOnC2Start
 	st.cb.assertN3Add = st.assertSpecificRoutesOnN3Add
+	st.cb.assertN3Remove = st.assertSpecificRoutesOnN3Remove
 
 	st.require.NoError(st.runV4(), "Scenario failed to run.")
 }
@@ -74,12 +74,12 @@ func TestHostShortcut(t *testing.T) {
 		st.assertAggressiveInit()
 		st.assertSpecificRoutesOnInit()
 	}
-
 	st.cb.assertC2Start = st.assertSpecificRoutesOnC2Start
 	st.cb.assertN3Add = func() {
 		st.assertAggressiveN3Add()
 		st.assertSpecificRoutesOnN3Add()
 	}
+	st.cb.assertN3Remove = st.assertSpecificRoutesOnN3Remove
 
 	st.require.NoError(st.runV4(), "Scenario failed to run.")
 
@@ -96,6 +96,12 @@ func (st *simulation) assertSpecificRoutesOnC2Start() {
 
 	st.assert.False(st.handleContainsRoute(st.c[2].handle, testNets[0], nil), "c2 should not have a route to n0.")
 	st.assert.True(st.handleContainsRoute(st.c[2].handle, testNets[1], nil), "c2 should have a route to n1.")
+}
+
+func (st *simulation) assertSpecificRoutesOnN3Remove() {
+	st.assertSpecificRoutesOnC2Start()
+	st.assert.False(st.handleContainsRoute(st.c[1].handle, testNets[3], nil), "c2 should not have a route to n3.")
+	st.assert.False(st.handleContainsRoute(st.c[2].handle, testNets[3], nil), "c2 should not have a route to n3.")
 }
 
 func (st *simulation) assertAggressiveInit() {

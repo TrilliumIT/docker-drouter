@@ -146,6 +146,10 @@ func (st *simulation) runV4() error {
 	time.Sleep(5 * time.Second)
 
 	//global c2start assertions
+	drn, ok = st.dr.getNetwork(st.n[1].ID)
+	st.assert.True(ok, "should have learned n1 by now.")
+	st.assert.True(drn.isConnected(), "drouter should be connected to n1.")
+
 	drn, ok = st.dr.getNetwork(st.n[2].ID)
 	st.assert.True(ok, "should have learned n2 by now.")
 	st.assert.True(drn.isConnected(), "drouter should be connected to n2.")
@@ -171,7 +175,29 @@ func (st *simulation) runV4() error {
 	st.cb.assertN3Add()
 	checkLogs(st.assert)
 
-	//EVENT: purposefully remove c2 and make sure c1 looses the route in non-aggressive
+	//EVENT: disconnect from n3
+	st.assert.NoError(dc.NetworkRemove(bg, st.n[3].ID))
+	time.Sleep(10 * time.Second)
+
+	//global n3remove assertions
+	drn, ok = st.dr.getNetwork(st.n[1].ID)
+	st.assert.True(ok, "should have learned n1 by now.")
+	st.assert.True(drn.isConnected(), "drouter should still be connected to n1.")
+
+	drn, ok = st.dr.getNetwork(st.n[2].ID)
+	st.assert.True(ok, "should have learned n2 by now.")
+	st.assert.True(drn.isConnected(), "drouter should still be connected to n2.")
+
+	drn, ok = st.dr.getNetwork(st.n[3].ID)
+	if ok {
+		st.assert.False(drn.isConnected(), "drouter should not be connected to n3.")
+	}
+
+	//n3remove callbacks
+	st.cb.assertN3Remove()
+	checkLogs(st.assert)
+
+	//EVENT: stop c2
 	st.assert.NoError(st.c[2].remove(), "Failed to remove c2.")
 	time.Sleep(5 * time.Second)
 	checkLogs(st.assert)
@@ -187,8 +213,6 @@ func (st *simulation) runV4() error {
 	st.assert.Equal(aggressive, st.handleContainsRoute(st.c[1].handle, testNets[2], nil), "c1 should have a route to n2 in aggressive mode.")
 
 	//More simulations here
-
-	//disconnect from n3 and make sure containers lose route in aggressive mode
 
 	//Now test quitting
 	fmt.Println("Stopping DRouter.")
