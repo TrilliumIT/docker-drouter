@@ -90,14 +90,22 @@ func TestDefault(t *testing.T) {
 	}
 
 	st.cb[assertInit] = func() {
-		checkLogs(assert)
-
 		drn, ok := st.dr.getNetwork(st.n[0].ID)
 		assert.True(ok, "should have learned n0 by now.")
 
 		drn, ok = st.dr.getNetwork(st.n[2].ID)
 		assert.True(ok, "should have learned n2 by now.")
 		assert.True(drn.isConnected(), "drouter should be connected to n2.")
+
+		st.assert.True(handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should have a route to n2.")
+	}
+
+	st.cb[assertC2Start] = func() {
+		st.assert.False(handleContainsRoute(st.c[1].handle, testNets[0], nil, st.assert), "c1 should not have a route to n0.")
+		st.assert.True(handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should have a route to n2.")
+
+		st.assert.False(handleContainsRoute(st.c[2].handle, testNets[0], nil, st.assert), "c2 should not have a route to n0.")
+		st.assert.True(handleContainsRoute(st.c[2].handle, testNets[1], nil, st.assert), "c2 should have a route to n1.")
 	}
 
 	require.NoError(st.runV4(), "Scenario failed to run.")
@@ -128,12 +136,21 @@ func TestNoAggressive(t *testing.T) {
 			assert.True(e.Level >= log.WarnLevel, "All logs should be >= Warn, but observed log: ", e)
 		}
 		assert.Equal(warns, 1, "Should have recieved one warning message for running in Aggressive with no tranist net")
-
 		hook.Reset()
+
+		st.assert.False(handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should not have a route to n2.")
 
 		if drn, ok := st.dr.getNetwork(st.n[2].ID); ok {
 			assert.False(drn.isConnected(), "drouter should not be connected to n2.")
 		}
+	}
+
+	st.cb[assertC2Start] = func() {
+		st.assert.False(handleContainsRoute(st.c[1].handle, testNets[0], nil, st.assert), "c1 should not have a route to n0.")
+		st.assert.True(handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should have a route to n2.")
+
+		st.assert.False(handleContainsRoute(st.c[2].handle, testNets[0], nil, st.assert), "c2 should not have a route to n0.")
+		st.assert.True(handleContainsRoute(st.c[2].handle, testNets[1], nil, st.assert), "c2 should have a route to n1.")
 	}
 
 	require.NoError(st.runV4(), "Scenario failed to run.")
@@ -141,6 +158,8 @@ func TestNoAggressive(t *testing.T) {
 
 func TestHostShortcut(t *testing.T) {
 	require.NoError(t, cleanup(), "Failed to cleanup()")
+
+	log.SetLevel(log.DebugLevel)
 
 	assert := assert.New(t)
 	require := require.New(t)
@@ -155,9 +174,11 @@ func TestHostShortcut(t *testing.T) {
 		cb:      make(map[int]func()),
 	}
 
-	//TODO, actually, you know, test stuff
+	//TODO, actually, you know, test stuff, write the callbacks
 
 	require.NoError(st.runV4(), "Scenario failed to run.")
+
+	log.SetLevel(log.InfoLevel)
 }
 
 func cleanup() error {

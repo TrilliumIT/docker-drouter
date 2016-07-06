@@ -12,8 +12,8 @@ import (
 
 const (
 	assertInit = iota
+	assertC2Start
 
-//	assertC2Start
 //	assertN3Add
 )
 
@@ -40,7 +40,7 @@ func (st *simulation) runV4() error {
 		st.n[i], err = createNetwork(i, i != 0)
 		st.require.NoError(err, "Failed to create n%v.", i)
 		defer func(n *dockerTypes.NetworkResource) {
-			st.require.NoError(dc.NetworkRemove(bg, n.ID), "Failed to remove n%v.", i)
+			st.require.NoError(dc.NetworkRemove(bg, n.ID), "Failed to remove %v.", n.Name)
 		}(st.n[i])
 	}
 
@@ -48,8 +48,8 @@ func (st *simulation) runV4() error {
 	fmt.Println("Creating containers 0-1.")
 	for i := 0; i < 2; i++ {
 		st.c[i], err = createContainer(i, st.n[i].Name)
-		defer func(c *container) { st.assert.NoError(c.remove(), "Failed to remove c%v.", i) }(st.c[i])
 		st.require.NoError(err, "Failed to get container object for c%v.", i)
+		defer func(c *container) { st.assert.NoError(c.remove(), "Failed to remove %v.", c.id) }(st.c[i])
 	}
 
 	st.c0routes, err = st.c[0].handle.RouteList(nil, netlink.FAMILY_V4)
@@ -79,6 +79,7 @@ func (st *simulation) runV4() error {
 
 	//assertInit callback
 	st.cb[assertInit]()
+	checkLogs(st.assert)
 
 	st.checkC0Routes()
 
@@ -90,20 +91,12 @@ func (st *simulation) runV4() error {
 	st.assert.True(ok, "should have learned n1 by now.")
 	st.assert.True(drn.isConnected(), "drouter should be connected to n1.")
 
-	st.assert.Equal(aggressive, handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should have a route to n2 if in aggressive mode.")
-
 	st.c[2], err = createContainer(2, st.n[2].Name)
 	st.require.NoError(err, "Failed to create c2.")
 	time.Sleep(5 * time.Second)
 
-	fmt.Printf("Entries: %v\n", len(hook.Entries))
+	st.cb[assertC2Start]()
 	checkLogs(st.assert)
-
-	st.assert.False(handleContainsRoute(st.c[1].handle, testNets[0], nil, st.assert), "c1 should not have a route to n0.")
-	st.assert.True(handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should have a route to n2.")
-
-	st.assert.False(handleContainsRoute(st.c[2].handle, testNets[0], nil, st.assert), "c2 should not have a route to n0.")
-	st.assert.True(handleContainsRoute(st.c[2].handle, testNets[1], nil, st.assert), "c2 should have a route to n1.")
 
 	st.n[3], err = createNetwork(3, true)
 	st.assert.NoError(err, "Failed to create n3.")
@@ -127,10 +120,12 @@ func (st *simulation) runV4() error {
 	//disconnect from n3 and make sure containers lose route in aggressive mode
 
 	//Now test quitting
+	fmt.Println("Stopping DRouter.")
 	close(quit)
 
 	st.assert.NoError(<-ech, "Error during drouter shutdown.")
 	checkLogs(st.assert)
+	fmt.Println("DRouter stopped.")
 
 	return nil
 }
