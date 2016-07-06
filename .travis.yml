@@ -25,5 +25,5 @@ before_script:
   - docker build -t droutertest -f ./Dockertest .
 
 script:
-  - $GOPATH/bin/gometalinter --vendor --deadline 120s --skip=./vendor . ./...
+  - $GOPATH/bin/gometalinter --vendor --disable=gocyclo --enable=goimports --enable="gofmt -s" --deadline 600s --skip=./vendor . ./...
   - docker run -it --privileged --rm --pid=host -v /var/run/docker.sock:/var/run/docker.sock -e TRAVIS_JOB_ID=$TRAVIS_JOB_ID -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST droutertest '$GOPATH/bin/goveralls -service=travis-ci ./drouter'
