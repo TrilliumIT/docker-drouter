@@ -295,7 +295,6 @@ func (dr *distributedRouter) mainLoop(learnNetwork chan *network,
 	dockerEvent <-chan dockerevents.Message,
 	routeEvent <-chan netlink.RouteUpdate,
 	dockerEventErr <-chan error,
-	stopChan <-chan struct{},
 	eventWG *sync.WaitGroup) {
 	for {
 		select {
@@ -396,7 +395,6 @@ func (dr *distributedRouter) start() error {
 		dockerEvent,
 		routeEvent,
 		dockerEventErr,
-		stopChan,
 		&eventWG)
 
 	log.Info("Cleaning Up")
