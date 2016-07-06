@@ -14,15 +14,16 @@ import (
 )
 
 type simulation struct {
-	dr       *distributedRouter
-	c        []*container
-	n        []*dockerTypes.NetworkResource
-	hns      *netlink.Handle
-	cb       *simCallbacks
-	assert   *assert.Assertions
-	require  *require.Assertions
-	c0routes []netlink.Route
-	c1routes []netlink.Route
+	dr         *distributedRouter
+	c          []*container
+	n          []*dockerTypes.NetworkResource
+	hns        *netlink.Handle
+	cb         *simCallbacks
+	assert     *assert.Assertions
+	require    *require.Assertions
+	c0routes   []netlink.Route
+	c1routes   []netlink.Route
+	hostRoutes []netlink.Route
 }
 
 type simCallbacks struct {
@@ -92,8 +93,14 @@ func (st *simulation) runV4() error {
 		defer func(c *container) { st.assert.NoError(c.remove(), "Failed to remove %v.", c.id) }(st.c[i])
 	}
 
+	st.hostRoutes, err = st.hns.RouteList(nil, netlink.FAMILY_V4)
+	st.require.NoError(err, "Failed to get host initial routes.")
+
 	st.c0routes, err = st.c[0].handle.RouteList(nil, netlink.FAMILY_V4)
 	st.require.NoError(err, "Failed to get c0 initial routes.")
+
+	st.c1routes, err = st.c[1].handle.RouteList(nil, netlink.FAMILY_V4)
+	st.require.NoError(err, "Failed to get c1 initial routes.")
 
 	//Get DRouter going
 	quit := make(chan struct{})
@@ -116,6 +123,7 @@ func (st *simulation) runV4() error {
 
 	st.checkC0Routes()
 
+	//global initial assertions
 	if drn, ok := st.dr.getNetwork(st.n[0].ID); ok {
 		st.assert.False(drn.isConnected(), "drouter should not be connected to n0.")
 	}
@@ -128,7 +136,7 @@ func (st *simulation) runV4() error {
 		st.assert.Equal(aggressive, drn.isConnected(), "drouter should be connected to n2 in aggressive mode.")
 	}
 
-	//DRouter init callback
+	//DRouter init callback assertions
 	st.cb.assertInit()
 	checkLogs(st.assert)
 
@@ -137,11 +145,12 @@ func (st *simulation) runV4() error {
 	st.require.NoError(err, "Failed to create c2.")
 	time.Sleep(5 * time.Second)
 
+	//global c2start assertions
 	drn, ok = st.dr.getNetwork(st.n[2].ID)
 	st.assert.True(ok, "should have learned n2 by now.")
 	st.assert.True(drn.isConnected(), "drouter should be connected to n2.")
 
-	//c2 start callback
+	//c2 start callback assertions
 	st.cb.assertC2Start()
 	checkLogs(st.assert)
 
@@ -153,6 +162,12 @@ func (st *simulation) runV4() error {
 	//sleep to give aggressive time to connect to n3
 	time.Sleep(10 * time.Second)
 
+	//global n3add assertions
+	if drn, ok = st.dr.getNetwork(st.n[3].ID); ok {
+		st.assert.Equal(aggressive, drn.isConnected(), "drouter should be connected to n3 in aggressive mode.")
+	}
+
+	//n3add callback assertions
 	st.cb.assertN3Add()
 	checkLogs(st.assert)
 
@@ -161,9 +176,9 @@ func (st *simulation) runV4() error {
 	time.Sleep(5 * time.Second)
 	checkLogs(st.assert)
 
-	drn, ok = st.dr.getNetwork(st.n[2].ID)
-	st.assert.True(ok, "should have learned n2 by now.")
-	st.assert.Equal(aggressive, drn.isConnected(), "drouter should be connected to n2 in aggressive mode.")
+	if drn, ok = st.dr.getNetwork(st.n[2].ID); ok {
+		st.assert.Equal(aggressive, drn.isConnected(), "drouter should still be connected to n2 in aggressive mode.")
+	}
 
 	//c2 stop callback
 	st.cb.assertC2Stop()

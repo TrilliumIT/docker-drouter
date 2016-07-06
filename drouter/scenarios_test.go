@@ -21,7 +21,10 @@ func TestDefault(t *testing.T) {
 	}
 
 	st.cb.assertC2Start = st.assertSpecificRoutesOnC2Start
-	st.cb.assertN3Add = st.assertSpecificRoutesOnN3Add
+	st.cb.assertN3Add = func() {
+		st.assertAggressiveN3Add()
+		st.assertSpecificRoutesOnN3Add()
+	}
 
 	st.require.NoError(st.runV4(), "Scenario failed to run.")
 }
@@ -73,7 +76,10 @@ func TestHostShortcut(t *testing.T) {
 	}
 
 	st.cb.assertC2Start = st.assertSpecificRoutesOnC2Start
-	st.cb.assertN3Add = st.assertSpecificRoutesOnN3Add
+	st.cb.assertN3Add = func() {
+		st.assertAggressiveN3Add()
+		st.assertSpecificRoutesOnN3Add()
+	}
 
 	st.require.NoError(st.runV4(), "Scenario failed to run.")
 
@@ -98,6 +104,11 @@ func (st *simulation) assertAggressiveInit() {
 
 	_, ok = st.dr.getNetwork(st.n[2].ID)
 	st.assert.True(ok, "should have learned n2 by now.")
+}
+
+func (st *simulation) assertAggressiveN3Add() {
+	_, ok := st.dr.getNetwork(st.n[3].ID)
+	st.assert.True(ok, "should have learned n3 by now.")
 }
 
 func (st *simulation) assertSpecificRoutesOnInit() {
