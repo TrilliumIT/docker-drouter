@@ -19,6 +19,7 @@ before_install:
 
 install:
   - $GOPATH/bin/glide install
+  - go build -i
 
 before_script:
   - docker build -t droutertest -f ./Dockertest .
