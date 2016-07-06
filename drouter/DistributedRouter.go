@@ -161,7 +161,7 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	if hostShortcut {
 		var err error
 		log.Debug("--host-shortcut detected, making P2P link.")
-		p2p, err = newP2PNetwork(options.P2PAddr)
+		p2p, err = newP2PNetwork(options.InstanceName, options.P2PAddr)
 		if err != nil {
 			log.Error("Failed to create the point to point link.")
 			return nil, err
