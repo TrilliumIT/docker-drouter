@@ -22,9 +22,12 @@ const (
 func createNetwork(n int, dr bool) (*dockerTypes.NetworkResource, error) {
 	name := fmt.Sprintf(NetName, n)
 	opts := make(map[string]string)
+
 	if dr {
 		opts["drouter"] = DrInst
 	}
+	opts["com.docker.network.bridge.name"] = fmt.Sprintf("%v_%v", DrInst, n)
+
 	r, err := dc.NetworkCreate(bg, name, dockerTypes.NetworkCreate{
 		Options: opts,
 		IPAM: dockerNTypes.IPAM{
@@ -40,12 +43,43 @@ func createNetwork(n int, dr bool) (*dockerTypes.NetworkResource, error) {
 		return nil, err
 	}
 
+	err = removeAllAddrs(fmt.Sprintf("%v_%v", DrInst, n))
+	if err != nil {
+		return nil, err
+	}
+
 	nr, err := dc.NetworkInspect(bg, r.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &nr, nil
+}
+
+func removeAllAddrs(intName string) error {
+	hns, err := netlinkHandleFromPid(1)
+	if err != nil {
+		return err
+	}
+
+	br, err := hns.LinkByName(intName)
+	if err != nil {
+		return err
+	}
+
+	addrs, err := hns.AddrList(br, netlink.FAMILY_ALL)
+	if err != nil {
+		return err
+	}
+
+	for _, addr := range addrs {
+		err := hns.AddrDel(br, &addr)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func TestNetworkConnect(t *testing.T) {
