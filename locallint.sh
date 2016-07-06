@@ -1,6 +1,7 @@
 #!/bin/sh
 set -e
 
+#gotype mad? run go build -i
 $GOPATH/bin/gometalinter --disable=gocyclo --vendor --deadline 120s --skip=$(dirname $0)/vendor $(dirname $0) $(dirname $0)/...
 
 
