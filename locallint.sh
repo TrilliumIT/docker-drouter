@@ -1,8 +1,7 @@
 #!/bin/sh
 set -e
 
-go build -i github.com/TrilliumIT/docker-drouter
-$GOPATH/bin/gometalinter --disable=gocyclo --enable="gofmt -s" --vendor --deadline 120s --skip=$(dirname $0)/vendor $(dirname $0) $(dirname $0)/...
+$GOPATH/bin/gometalinter --disable=gocyclo --vendor --deadline 120s --skip=$(dirname $0)/vendor $(dirname $0) $(dirname $0)/...
 
 
 ### to install:
