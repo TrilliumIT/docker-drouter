@@ -89,10 +89,10 @@ func newP2PNetwork(instance, p2paddr string) (*p2pNetwork, error) {
 
 func (p *p2pNetwork) remove() error {
 	p.log.Debug("Removing p2p network")
-	hostLink, err := p.hostNamespace.LinkByName("drouter_veth0")
+	hostLink, err := p.hostNamespace.LinkByName(p.hostLinkName)
 	if err != nil {
 		p.log.WithFields(log.Fields{
-			"LinkName": "drouter_veth0",
+			"LinkName": p.hostLinkName,
 			"Error":    err,
 		}).Error("Failed to get p2p link")
 		return err
@@ -159,11 +159,12 @@ func (p *p2pNetwork) delHostRoute(sn *net.IPNet) {
 			"Gateway":     route.Gw,
 			"Error":       err,
 		}).Error("Failed to delete host route.")
+		return
 	}
 	p.log.WithFields(log.Fields{
 		"Destination": route.Dst,
 		"Gateway":     route.Gw,
-	}).Error("Successfully deleted host route.")
+	}).Debug("Successfully deleted host route.")
 }
 
 func (p *p2pNetwork) getHostUnderlay() (*net.IPNet, error) {
@@ -214,7 +215,7 @@ Hroutes:
 }
 
 func (p *p2pNetwork) createHostLink() error {
-	//check if drouter_veth0 already exists
+	//check if veth device already exists
 	hostLink, err := p.hostNamespace.LinkByName(p.hostLinkName)
 	if err == nil {
 		//exists already... delete

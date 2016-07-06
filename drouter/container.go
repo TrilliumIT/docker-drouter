@@ -313,10 +313,7 @@ func (c *container) delRoutesVia(to, via *net.IPNet) {
 		}
 
 		for _, ipaddr := range ips {
-			if !r.Gw.Equal(ipaddr.IP) {
-				continue
-			}
-			if via != nil && !via.Contains(r.Gw) {
+			if !r.Gw.Equal(ipaddr.IP) || (via != nil && !via.Contains(r.Gw)) {
 				continue
 			}
 			c.log.WithFields(log.Fields{

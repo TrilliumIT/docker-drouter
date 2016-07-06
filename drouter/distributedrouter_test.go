@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TrilliumIT/iputil"
 	dockerclient "github.com/docker/engine-api/client"
 	dockerTypes "github.com/docker/engine-api/types"
 	dockerNTypes "github.com/docker/engine-api/types/network"
@@ -16,8 +15,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	logtest "github.com/Sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/vishvananda/netlink"
 )
 
 var (
@@ -72,113 +69,6 @@ func defaultOpts() *DistributedRouterOptions {
 		TransitNet:       "",
 		InstanceName:     DrInst,
 	}
-}
-
-func TestDefault(t *testing.T) {
-	require.NoError(t, cleanup(), "Failed to cleanup()")
-
-	assert := assert.New(t)
-	require := require.New(t)
-
-	opts := defaultOpts()
-
-	st := simulation{
-		opts:    opts,
-		assert:  assert,
-		require: require,
-		cb:      make(map[int]func()),
-	}
-
-	st.cb[assertInit] = func() {
-		drn, ok := st.dr.getNetwork(st.n[0].ID)
-		assert.True(ok, "should have learned n0 by now.")
-
-		drn, ok = st.dr.getNetwork(st.n[2].ID)
-		assert.True(ok, "should have learned n2 by now.")
-		assert.True(drn.isConnected(), "drouter should be connected to n2.")
-
-		st.assert.True(handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should have a route to n2.")
-	}
-
-	st.cb[assertC2Start] = func() {
-		st.assert.False(handleContainsRoute(st.c[1].handle, testNets[0], nil, st.assert), "c1 should not have a route to n0.")
-		st.assert.True(handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should have a route to n2.")
-
-		st.assert.False(handleContainsRoute(st.c[2].handle, testNets[0], nil, st.assert), "c2 should not have a route to n0.")
-		st.assert.True(handleContainsRoute(st.c[2].handle, testNets[1], nil, st.assert), "c2 should have a route to n1.")
-	}
-
-	require.NoError(st.runV4(), "Scenario failed to run.")
-}
-
-func TestNoAggressive(t *testing.T) {
-	require.NoError(t, cleanup(), "Failed to cleanup()")
-
-	assert := assert.New(t)
-	require := require.New(t)
-
-	opts := defaultOpts()
-	opts.Aggressive = false
-
-	st := simulation{
-		opts:    opts,
-		assert:  assert,
-		require: require,
-		cb:      make(map[int]func()),
-	}
-
-	st.cb[assertInit] = func() {
-		warns := 0
-		for _, e := range hook.Entries {
-			if e.Level == log.WarnLevel {
-				warns++
-			}
-			assert.True(e.Level >= log.WarnLevel, "All logs should be >= Warn, but observed log: ", e)
-		}
-		assert.Equal(warns, 1, "Should have recieved one warning message for running in Aggressive with no tranist net")
-		hook.Reset()
-
-		st.assert.False(handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should not have a route to n2.")
-
-		if drn, ok := st.dr.getNetwork(st.n[2].ID); ok {
-			assert.False(drn.isConnected(), "drouter should not be connected to n2.")
-		}
-	}
-
-	st.cb[assertC2Start] = func() {
-		st.assert.False(handleContainsRoute(st.c[1].handle, testNets[0], nil, st.assert), "c1 should not have a route to n0.")
-		st.assert.True(handleContainsRoute(st.c[1].handle, testNets[2], nil, st.assert), "c1 should have a route to n2.")
-
-		st.assert.False(handleContainsRoute(st.c[2].handle, testNets[0], nil, st.assert), "c2 should not have a route to n0.")
-		st.assert.True(handleContainsRoute(st.c[2].handle, testNets[1], nil, st.assert), "c2 should have a route to n1.")
-	}
-
-	require.NoError(st.runV4(), "Scenario failed to run.")
-}
-
-func TestHostShortcut(t *testing.T) {
-	require.NoError(t, cleanup(), "Failed to cleanup()")
-
-	log.SetLevel(log.DebugLevel)
-
-	assert := assert.New(t)
-	require := require.New(t)
-
-	opts := defaultOpts()
-	opts.HostShortcut = true
-
-	st := simulation{
-		opts:    opts,
-		assert:  assert,
-		require: require,
-		cb:      make(map[int]func()),
-	}
-
-	//TODO, actually, you know, test stuff, write the callbacks
-
-	require.NoError(st.runV4(), "Scenario failed to run.")
-
-	log.SetLevel(log.InfoLevel)
 }
 
 func cleanup() error {
@@ -255,20 +145,4 @@ func checkLogs(assert *assert.Assertions) {
 	}
 
 	hook.Reset()
-}
-
-func handleContainsRoute(h *netlink.Handle, to *net.IPNet, via *net.IP, assert *assert.Assertions) bool {
-	routes, err := h.RouteList(nil, netlink.FAMILY_ALL)
-	assert.NoError(err, "Failed to get routes from handle.")
-
-	for _, r := range routes {
-		if r.Dst == nil || r.Gw == nil {
-			continue
-		}
-
-		if iputil.SubnetEqualSubnet(r.Dst, to) && (via == nil || r.Gw.Equal(*via)) {
-			return true
-		}
-	}
-	return false
 }
