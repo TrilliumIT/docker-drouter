@@ -55,13 +55,11 @@ func insertMasqRule() error {
 	return nil
 }
 
-func getSelfContainer() (*dockertypes.ContainerJSON, error) {
-	log.Debug("Getting self containerJSON object.")
-
+func getSelfContainerID() (string, error) {
 	cgroup, err := os.Open("/proc/self/cgroup")
 	if err != nil {
 		log.Error("Error getting cgroups.")
-		return nil, err
+		return "", err
 	}
 	defer func() {
 		err = cgroup.Close()
@@ -73,21 +71,30 @@ func getSelfContainer() (*dockertypes.ContainerJSON, error) {
 	scanner := bufio.NewScanner(cgroup)
 	for scanner.Scan() {
 		line := strings.Split(scanner.Text(), "/")
-		id := line[len(line)-1]
-		var cjson dockertypes.ContainerJSON
-		cjson, err = dockerClient.ContainerInspect(context.Background(), id)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"ID":    id,
-				"Error": err,
-			}).Error("Failed to inspect container")
-			return nil, err
-		}
-		return &cjson, nil
+		return line[len(line)-1], nil
 	}
 	err = fmt.Errorf("Container not found")
-	logError("Failed to get self container", err)
-	return nil, err
+	logError("Failed to get self ID", err)
+	return "", err
+}
+
+func getSelfContainer() (*dockertypes.ContainerJSON, error) {
+	log.Debug("Getting self containerJSON object.")
+
+	id, err := getSelfContainerID()
+	if err != nil {
+		return nil, err
+	}
+	var cjson dockertypes.ContainerJSON
+	cjson, err = dockerClient.ContainerInspect(context.Background(), id)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"ID":    id,
+			"Error": err,
+		}).Error("Failed to inspect container")
+		return nil, err
+	}
+	return &cjson, nil
 }
 
 func subnetCoveredByStatic(subnet *net.IPNet) bool {

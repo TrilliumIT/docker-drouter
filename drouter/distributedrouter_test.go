@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	dockerclient "github.com/docker/engine-api/client"
 	dockerTypes "github.com/docker/engine-api/types"
@@ -29,11 +30,21 @@ const (
 )
 
 func TestMain(m *testing.M) {
-	fmt.Println("Begin TestMain().")
 	exitStatus := 1
 	defer func() { os.Exit(exitStatus) }()
+	fmt.Println("Begin TestMain().")
 
 	hook = logtest.NewGlobal()
+
+	err := cleanup()
+	if err != nil {
+		return
+	}
+	err = disconnectDRFromEverything()
+	if err != nil {
+		return
+	}
+	time.Sleep(5 * time.Second)
 
 	testNets = make([]*net.IPNet, 4)
 	for i := range testNets {
@@ -43,15 +54,17 @@ func TestMain(m *testing.M) {
 
 	exitStatus = m.Run()
 
-	err := cleanup()
+	err = cleanup()
 	if err != nil {
-		panic(err)
+		exitStatus = 1
+		return
 	}
 
 	// rejoin bridge, required to upload coverage
 	err = dc.NetworkConnect(bg, "bridge", selfContainerID, &dockerNTypes.EndpointSettings{})
 	if err != nil {
-		panic(err)
+		exitStatus = 1
+		return
 	}
 	fmt.Println("End TestMain().")
 }

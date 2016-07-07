@@ -121,20 +121,28 @@ func initVars(options *DistributedRouterOptions) error {
 		}
 	}
 
+	selfContainerID, err = getSelfContainerID()
+	if err != nil {
+		log.Error("Failed to getSelfContainerID(). I am running in a container, right?.")
+		return err
+	}
+
+	return nil
+}
+
+func disconnectDRFromEverything() error {
 	sc, err := getSelfContainer()
 	if err != nil {
 		log.Error("Failed to getSelfContainer(). I am running in a container, right?.")
 		return err
 	}
-	selfContainerID = sc.ID
-
 	//disconnect from all initial networks
 	log.Debug("Leaving all connected currently networks.")
 	for name, settings := range sc.NetworkSettings.Networks {
 		log.WithFields(log.Fields{
 			"Network": name,
 		}).Debug("Leaving network.")
-		err = dockerClient.NetworkDisconnect(context.Background(), settings.NetworkID, selfContainerID, true)
+		err = dockerClient.NetworkDisconnect(context.Background(), settings.NetworkID, sc.ID, true)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"Network": name,
@@ -144,7 +152,6 @@ func initVars(options *DistributedRouterOptions) error {
 		}
 	}
 	return nil
-
 }
 
 func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter, error) {
@@ -325,6 +332,12 @@ func (dr *distributedRouter) mainLoop(learnNetwork chan *network,
 
 func (dr *distributedRouter) start() error {
 	var err error
+
+	err = disconnectDRFromEverything()
+	if err != nil {
+		log.Error("Failed to disconnect from existing networks.")
+		return err
+	}
 
 	//initial setup
 	if hostShortcut {
