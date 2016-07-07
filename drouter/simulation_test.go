@@ -242,9 +242,6 @@ func (st *simulation) runV4() error {
 	//check host routes
 	hostNewRoutes, err := st.hns.RouteList(nil, netlink.FAMILY_V4)
 	st.require.NoError(err, "Failed to get host routes after dr stop.")
-	for _, r := range hostNewRoutes {
-		fmt.Printf("%+v\n", r)
-	}
 	st.assert.EqualValues(st.hostRoutes, hostNewRoutes, "Host routes should be returned to original state.")
 
 	//check c0 routes

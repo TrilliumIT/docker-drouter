@@ -25,6 +25,10 @@ func TestDefault(t *testing.T) {
 		st.assertSpecificRoutesOnN3Add()
 	}
 	st.cb.assertN3Remove = st.assertSpecificRoutesOnN3Remove
+	st.cb.assertC2Stop = func() {
+		st.assertAggressiveInit()
+		st.assertSpecificRoutesOnInit()
+	}
 
 	st.require.NoError(st.runV4(), "Scenario failed to run.")
 }
@@ -54,6 +58,7 @@ func TestNoAggressive(t *testing.T) {
 	st.cb.assertC2Start = st.assertSpecificRoutesOnC2Start
 	st.cb.assertN3Add = st.assertSpecificRoutesOnN3Add
 	st.cb.assertN3Remove = st.assertSpecificRoutesOnN3Remove
+	st.cb.assertC2Stop = st.assertSpecificRoutesOnInit
 
 	st.require.NoError(st.runV4(), "Scenario failed to run.")
 }
