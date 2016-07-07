@@ -77,9 +77,6 @@ func (st *simulation) runV4() error {
 	//capture host routes before anything
 	st.hostRoutes, err = st.hns.RouteList(nil, netlink.FAMILY_V4)
 	st.require.NoError(err, "Failed to get host initial routes.")
-	for _, r := range st.hostRoutes {
-		fmt.Printf("%+v\n", r)
-	}
 
 	//create first 3 networks
 	fmt.Println("Creating networks 0, 1, and 2.")
