@@ -328,7 +328,6 @@ func (dr *distributedRouter) start() error {
 
 	//initial setup
 	if hostShortcut {
-		var err error
 		log.Debug("--host-shortcut detected, making P2P link.")
 		p2p, err = newP2PNetwork(instanceName, p2pAddr)
 		if err != nil {
@@ -345,7 +344,7 @@ func (dr *distributedRouter) start() error {
 			}
 			if masquerade {
 				log.Debug("--masquerade detected, inserting masquerade rule.")
-				if err := insertMasqRule(); err != nil {
+				if err = insertMasqRule(); err != nil {
 					log.Error("Failed to insertMasqRule().")
 					return err
 				}
