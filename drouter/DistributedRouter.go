@@ -35,6 +35,7 @@ var (
 	transitNetName   string
 	selfContainerID  string
 	instanceName     string
+	p2pAddr          string
 
 	//other globals
 	dockerClient *dockerclient.Client
@@ -74,6 +75,7 @@ func initVars(options *DistributedRouterOptions) error {
 	masquerade = options.Masquerade
 	instanceName = options.InstanceName
 	transitNetName = options.TransitNet
+	p2pAddr = options.P2PAddr
 
 	if !aggressive && len(transitNetName) == 0 {
 		log.Warn("Detected --no-aggressive and --transit-net was not found. This router may not be able to route to networks on other hosts")
@@ -155,33 +157,6 @@ func newDistributedRouter(options *DistributedRouterOptions) (*distributedRouter
 	//create our distributedRouter object
 	dr := &distributedRouter{
 		networks: make(map[string]*network),
-	}
-
-	//initial setup
-	if hostShortcut {
-		var err error
-		log.Debug("--host-shortcut detected, making P2P link.")
-		p2p, err = newP2PNetwork(options.InstanceName, options.P2PAddr)
-		if err != nil {
-			log.Error("Failed to create the point to point link.")
-			return nil, err
-		}
-
-		if hostGateway {
-			dr.defaultRoute = p2p.hostIP
-			err = dr.setDefaultRoute()
-			if err != nil {
-				log.Error("--host-gateway=true and unable to set default route to host's p2p address.")
-				return nil, err
-			}
-			if masquerade {
-				log.Debug("--masquerade detected, inserting masquerade rule.")
-				if err := insertMasqRule(); err != nil {
-					log.Error("Failed to insertMasqRule().")
-					return nil, err
-				}
-			}
-		}
 	}
 
 	log.Debug("Returning our new distributedRouter instance.")
@@ -350,6 +325,33 @@ func (dr *distributedRouter) mainLoop(learnNetwork chan *network,
 
 func (dr *distributedRouter) start() error {
 	var err error
+
+	//initial setup
+	if hostShortcut {
+		var err error
+		log.Debug("--host-shortcut detected, making P2P link.")
+		p2p, err = newP2PNetwork(instanceName, p2pAddr)
+		if err != nil {
+			log.Error("Failed to create the point to point link.")
+			return err
+		}
+
+		if hostGateway {
+			dr.defaultRoute = p2p.hostIP
+			err = dr.setDefaultRoute()
+			if err != nil {
+				log.Error("--host-gateway=true and unable to set default route to host's p2p address.")
+				return err
+			}
+			if masquerade {
+				log.Debug("--masquerade detected, inserting masquerade rule.")
+				if err := insertMasqRule(); err != nil {
+					log.Error("Failed to insertMasqRule().")
+					return err
+				}
+			}
+		}
+	}
 
 	if len(transitNetName) > 0 {
 		err = dr.initTransitNet()

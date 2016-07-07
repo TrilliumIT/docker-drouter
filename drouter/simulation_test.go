@@ -74,6 +74,13 @@ func newSimulation(opts *DistributedRouterOptions, t *testing.T) (*simulation, e
 func (st *simulation) runV4() error {
 	var err error
 
+	//capture host routes before anything
+	st.hostRoutes, err = st.hns.RouteList(nil, netlink.FAMILY_V4)
+	st.require.NoError(err, "Failed to get host initial routes.")
+	for _, r := range st.hostRoutes {
+		fmt.Printf("%+v\n", r)
+	}
+
 	//create first 3 networks
 	fmt.Println("Creating networks 0, 1, and 2.")
 
@@ -92,9 +99,6 @@ func (st *simulation) runV4() error {
 		st.require.NoError(err, "Failed to get container object for c%v.", i)
 		defer func(c *container) { st.assert.NoError(c.remove(), "Failed to remove %v.", c.id) }(st.c[i])
 	}
-
-	st.hostRoutes, err = st.hns.RouteList(nil, netlink.FAMILY_V4)
-	st.require.NoError(err, "Failed to get host initial routes.")
 
 	st.c0routes, err = st.c[0].handle.RouteList(nil, netlink.FAMILY_V4)
 	st.require.NoError(err, "Failed to get c0 initial routes.")
@@ -121,6 +125,7 @@ func (st *simulation) runV4() error {
 	fmt.Println("DRouter started.")
 	st.require.NoError(err, "Run() returned an error.")
 
+	//check c0 routes
 	st.checkC0Routes()
 
 	//global initial assertions
@@ -145,6 +150,9 @@ func (st *simulation) runV4() error {
 	st.require.NoError(err, "Failed to create c2.")
 	time.Sleep(5 * time.Second)
 
+	//check c0 routes
+	st.checkC0Routes()
+
 	//global c2start assertions
 	drn, ok = st.dr.getNetwork(st.n[1].ID)
 	st.assert.True(ok, "should have learned n1 by now.")
@@ -161,10 +169,11 @@ func (st *simulation) runV4() error {
 	//EVENT: create n3
 	st.n[3], err = createNetwork(3, true)
 	st.assert.NoError(err, "Failed to create n3.")
-	defer func() { st.assert.NoError(dc.NetworkRemove(bg, st.n[3].ID), "Failed to remove n3.") }()
-
 	//sleep to give aggressive time to connect to n3
 	time.Sleep(10 * time.Second)
+
+	//check c0 routes
+	st.checkC0Routes()
 
 	//global n3add assertions
 	if drn, ok = st.dr.getNetwork(st.n[3].ID); ok {
@@ -175,9 +184,20 @@ func (st *simulation) runV4() error {
 	st.cb.assertN3Add()
 	checkLogs(st.assert)
 
-	//EVENT: disconnect from n3
+	//EVENT: disconnect from n3, then remove it
+	//we have to disconnect first, because so would an admin
+	if drn, ok = st.dr.getNetwork(st.n[3].ID); ok && drn.isConnected() {
+		st.require.NoError(dc.NetworkDisconnect(bg, st.n[3].ID, selfContainerID, false), "Failed to disconnect drouter from n3.")
+		time.Sleep(5 * time.Second)
+		st.assert.True(drn.adminDown, "The adminDown flag should be true after a manual disconnect.")
+	}
+
+	//admin now deletes the network
 	st.assert.NoError(dc.NetworkRemove(bg, st.n[3].ID))
-	time.Sleep(10 * time.Second)
+	time.Sleep(5 * time.Second)
+
+	//check c0 routes
+	st.checkC0Routes()
 
 	//global n3remove assertions
 	drn, ok = st.dr.getNetwork(st.n[1].ID)
@@ -200,7 +220,9 @@ func (st *simulation) runV4() error {
 	//EVENT: stop c2
 	st.assert.NoError(st.c[2].remove(), "Failed to remove c2.")
 	time.Sleep(5 * time.Second)
-	checkLogs(st.assert)
+
+	//check c0 routes
+	st.checkC0Routes()
 
 	if drn, ok = st.dr.getNetwork(st.n[2].ID); ok {
 		st.assert.Equal(aggressive, drn.isConnected(), "drouter should still be connected to n2 in aggressive mode.")
@@ -212,15 +234,35 @@ func (st *simulation) runV4() error {
 
 	st.assert.Equal(aggressive, st.handleContainsRoute(st.c[1].handle, testNets[2], nil), "c1 should have a route to n2 in aggressive mode.")
 
-	//More simulations here
-
-	//Now test quitting
+	//EVENT: Now test quitting
 	fmt.Println("Stopping DRouter.")
 	close(quit)
 
 	st.assert.NoError(<-ech, "Error during drouter shutdown.")
-	checkLogs(st.assert)
 	fmt.Println("DRouter stopped.")
+	time.Sleep(5 * time.Second)
+
+	//check host routes
+	hostNewRoutes, err := st.hns.RouteList(nil, netlink.FAMILY_V4)
+	st.require.NoError(err, "Failed to get host routes after dr stop.")
+	for _, r := range hostNewRoutes {
+		fmt.Printf("%+v\n", r)
+	}
+	st.assert.EqualValues(st.hostRoutes, hostNewRoutes, "Host routes should be returned to original state.")
+
+	//check c0 routes
+	st.checkC0Routes()
+
+	//check c1 routes
+	c1newRoutes, err := st.c[1].handle.RouteList(nil, netlink.FAMILY_V4)
+	st.require.NoError(err, "Failed to get c1 routes after dr start.")
+	st.assert.EqualValues(st.c1routes, c1newRoutes, "c1 routes should be returned to original state.")
+
+	//TODO: more global quit assertions here
+
+	//Deinit callback
+	st.cb.assertDeinit()
+	checkLogs(st.assert)
 
 	return nil
 }
