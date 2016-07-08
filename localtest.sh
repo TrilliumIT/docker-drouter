@@ -16,10 +16,10 @@ docker run -it --name=drntest_drouter --privileged --rm -e TERM=xterm -v /var/ru
 docker run -it --name=drntest_drouter --privileged --rm -e TERM=xterm --pid=host -v /var/run/docker.sock:/var/run/docker.sock -v $BASEDIR/coverage:/coverage droutertest "go test github.com/TrilliumIT/docker-drouter/drouter -timeout 20m -coverprofile=/coverage/main.out $@"
 
 # remove dangling images
-[ -z $(docker images -q -f dangling=true | head -1) ] || docker rmi $(docker images -q -f dangling=true)
+[ -z $(docker images -q -f dangling=true | head -1) ] || docker rmi $(docker images -q -f dangling=true) > /dev/null
 
-if [ -e $BASEDIR/coverage/main.out ]; then
-	gocovmerge $BASEDIR/coverage/*.out > $BASEDIR/coverage/cover.out
+gocovmerge $BASEDIR/coverage/*.out > $BASEDIR/coverage/cover.out
+if [ -z $TRAVIS_JOB_ID ] ; then
 	echo "Press enter to view coverage"
 	read
 	go tool cover -html=$BASEDIR/coverage/cover.out

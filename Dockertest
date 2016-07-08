@@ -4,7 +4,7 @@ MAINTAINER Trillium IT <webmaster@trilliumit.com>
 
 ENV GO15VENDOREXPERIMENT 1
 
-RUN go get github.com/Masterminds/glide && go get github.com/mattn/goveralls && go get golang.org/x/tools/cmd/cover
+RUN go get github.com/Masterminds/glide && go get golang.org/x/tools/cmd/cover
 
 ENV SRC_ROOT /go/src/github.com/TrilliumIT/docker-drouter 
 

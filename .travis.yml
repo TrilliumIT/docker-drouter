@@ -16,6 +16,9 @@ before_install:
   - go get -u github.com/alecthomas/gometalinter
   - $GOPATH/bin/gometalinter --install --update
   - go get github.com/Masterminds/glide
+  - go get github.com/wadey/gocovmerge
+  - go get github.com/mattn/goveralls
+  - go get golang.org/x/tools/cmd/cover
 
 install:
   - $GOPATH/bin/glide install
@@ -26,4 +29,6 @@ before_script:
 
 script:
   - ./locallint.sh
+  - ./localtest.sh
   - docker run -it --privileged --rm --pid=host -v /var/run/docker.sock:/var/run/docker.sock -e TRAVIS_JOB_ID=$TRAVIS_JOB_ID -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST droutertest '$GOPATH/bin/goveralls -service=travis-ci ./drouter'
+  - $GOPATH/bin/goveralls -service=travis-ci -coverprofile=./coverage/cover.out
