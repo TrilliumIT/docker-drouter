@@ -3,17 +3,24 @@ set -e
 
 BASEDIR=$(realpath $(dirname "$0"))
 if [ -e $BASEDIR/coverage/cover.out ]; then
-	sudo rm -f $BASEDIR/coverage/cover.out
+	sudo rm -f $BASEDIR/coverage/*
 fi
 docker images alpine | grep alpine > /dev/null || docker pull alpine
 docker build -t droutertest -f $BASEDIR/Dockertest $BASEDIR
 echo "$@"
-docker run -it --name=drntest_drouter --privileged --rm -e TERM=xterm --pid=host -v /var/run/docker.sock:/var/run/docker.sock -v $BASEDIR/coverage:/coverage droutertest "go test github.com/TrilliumIT/docker-drouter/drouter -timeout 20m -coverprofile=/coverage/cover.out $@"
-ec=$?
+
+# test pid1
+docker run -it --name=drntest_drouter --privileged --rm -e TERM=xterm -v /var/run/docker.sock:/var/run/docker.sock -v $BASEDIR/coverage:/coverage droutertest -e TEST_NO_HOST_PID=1 "go test github.com/TrilliumIT/docker-drouter/drouter -timeout 20m -coverprofile=/coverage/pid1.out -run=TestPid1"
+
+# test main
+docker run -it --name=drntest_drouter --privileged --rm -e TERM=xterm --pid=host -v /var/run/docker.sock:/var/run/docker.sock -v $BASEDIR/coverage:/coverage droutertest "go test github.com/TrilliumIT/docker-drouter/drouter -timeout 20m -coverprofile=/coverage/main.out $@"
+
+# remove dangling images
 [ -z $(docker images -q -f dangling=true | head -1) ] || docker rmi $(docker images -q -f dangling=true)
-if [ -e $BASEDIR/coverage/cover.out ]; then
+
+if [ -e $BASEDIR/coverage/main.out ]; then
+	gocovmerge $BASEDIR/coverage/*.out > $BASEDIR/coverage/cover.out
 	echo "Press enter to view coverage"
 	read
 	go tool cover -html=$BASEDIR/coverage/cover.out
 fi
-exit $ec

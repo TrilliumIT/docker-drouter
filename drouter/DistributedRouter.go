@@ -3,7 +3,6 @@ package drouter
 import (
 	"fmt"
 	"net"
-	"os"
 	"sync"
 	"syscall"
 	"time"
@@ -81,11 +80,6 @@ func initVars(options *DistributedRouterOptions) error {
 		log.Warn("Detected --no-aggressive and --transit-net was not found. This router may not be able to route to networks on other hosts")
 	}
 
-	//get the pid of drouter
-	if os.Getpid() == 1 {
-		return fmt.Errorf("Running as pid 1. Running with --pid=host required.")
-	}
-
 	//staticRoutes
 	for _, sr := range options.StaticRoutes {
 		var cidr *net.IPNet
@@ -136,6 +130,11 @@ func disconnectDRFromEverything() error {
 		log.Error("Failed to getSelfContainer(). I am running in a container, right?.")
 		return err
 	}
+	if sc.HostConfig.PidMode != "host" {
+		log.Error("Drouter must run with --pid=host")
+		return fmt.Errorf("--pid=host required.")
+	}
+
 	//disconnect from all initial networks
 	log.Debug("Leaving all connected currently networks.")
 	for name, settings := range sc.NetworkSettings.Networks {
