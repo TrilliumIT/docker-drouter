@@ -2,9 +2,10 @@
 set -e
 
 dir=$(dirname "$0")
-if [ -e $dir/coverage/cover.out ]; then
-	sudo rm -f $dir/coverage/*
-fi
+
+mkdir $dir/coverage || true
+sudo rm -f $dir/coverage/* || true
+
 docker images alpine | grep alpine > /dev/null || docker pull alpine
 docker build -t droutertest -f $dir/Dockertest $dir
 echo "$@"
