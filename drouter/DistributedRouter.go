@@ -132,7 +132,7 @@ func disconnectDRFromEverything() error {
 	}
 	if sc.HostConfig.PidMode != "host" {
 		log.Error("Drouter must run with --pid=host")
-		return fmt.Errorf("--pid=host required.")
+		return fmt.Errorf("--pid=host required")
 	}
 
 	//disconnect from all initial networks
