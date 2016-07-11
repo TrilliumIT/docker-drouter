@@ -30,5 +30,6 @@ before_script:
 script:
   - ./locallint.sh
   - ./localtest.sh
-  - docker run -it --privileged --rm --pid=host -v /var/run/docker.sock:/var/run/docker.sock -e TRAVIS_JOB_ID=$TRAVIS_JOB_ID -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST droutertest '$GOPATH/bin/goveralls -service=travis-ci ./drouter'
+
+after_success:
   - $GOPATH/bin/goveralls -service=travis-ci -coverprofile=./coverage/cover.out
