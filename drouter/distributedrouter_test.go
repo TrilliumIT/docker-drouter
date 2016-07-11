@@ -10,7 +10,6 @@ import (
 
 	dockerclient "github.com/docker/engine-api/client"
 	dockerTypes "github.com/docker/engine-api/types"
-	dockerNTypes "github.com/docker/engine-api/types/network"
 	"golang.org/x/net/context"
 
 	log "github.com/Sirupsen/logrus"
@@ -36,37 +35,33 @@ func TestMain(m *testing.M) {
 
 	hook = logtest.NewGlobal()
 
-	err := cleanup()
-	if err != nil {
-		return
-	}
-	err = disconnectDRFromEverything()
-	if err != nil {
-		return
-	}
-	time.Sleep(5 * time.Second)
+	if os.Getenv("NO_TEST_SETUP") == "" {
+		err := cleanup()
+		if err != nil {
+			return
+		}
+		err = disconnectDRFromEverything()
+		if err != nil {
+			return
+		}
+		time.Sleep(5 * time.Second)
 
-	testNets = make([]*net.IPNet, 4)
-	for i := range testNets {
-		_, n, _ := net.ParseCIDR(fmt.Sprintf(NetIPNet, i*8))
-		testNets[i] = n
+		testNets = make([]*net.IPNet, 4)
+		for i := range testNets {
+			_, n, _ := net.ParseCIDR(fmt.Sprintf(NetIPNet, i*8))
+			testNets[i] = n
+		}
 	}
 
 	exitStatus = m.Run()
 
-	err = cleanup()
-	if err != nil {
-		exitStatus = 1
-		return
+	if os.Getenv("NO_TEST_SETUP") == "" {
+		err := cleanup()
+		if err != nil {
+			exitStatus = 1
+			return
+		}
 	}
-
-	// rejoin bridge, required to upload coverage
-	err = dc.NetworkConnect(bg, "bridge", selfContainerID, &dockerNTypes.EndpointSettings{})
-	if err != nil {
-		exitStatus = 1
-		return
-	}
-	fmt.Println("End TestMain().")
 }
 
 func defaultOpts() *DistributedRouterOptions {
