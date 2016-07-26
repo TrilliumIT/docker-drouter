@@ -7,25 +7,14 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/TrilliumIT/docker-drouter/drouter"
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 )
 
 const (
-	version = "0.1"
+	version = "0.2"
 )
 
 func main() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	signal.Notify(c, syscall.SIGTERM)
-	go func() {
-		<-c
-		err := drouter.Cleanup()
-		if err != nil {
-			log.Fatal(err)
-		}
-		os.Exit(0)
-	}()
 
 	var flagDebug = cli.BoolFlag{
 		Name:  "debug, d",
@@ -34,21 +23,47 @@ func main() {
 	var flagIPOffset = cli.IntFlag{
 		Name:  "ip-offset",
 		Value: 0,
-		Usage: "An int to indicate which IP the router should be given. A value of 1 will use the first IP address in the network. A value of -1 will used the last IP in the network. The default (0) will allow the IPAM driver to choose an arbitrary IP.",
+		Usage: "",
 	}
-	var flagAggressive = cli.BoolFlag{
-		Name:  "aggressive",
-		Usage: "Scan for new networks and create routing interfaces for all docker networks with the drouter option set, regardless of whether or not there are any containers on that network on this host.",
+	var flagDRouterInstance = cli.StringFlag{
+		Name:  "drouter-instance",
+		Value: "drouter",
+		Usage: "String to tell this drouter instance which networks to connect to. (must match 'docker network create -o drouter=<instance>')",
 	}
-	var flagDisableP2P = cli.BoolFlag{
-		Name:  "disable-p2p",
-		Usage: "Disable the creation of a p2p link between the host and the routing container. Use this option if you do not wish you want traffic routed between container networks but not between the host and the container",
+	var flagNoAggressive = cli.BoolFlag{
+		Name:  "no-aggressive",
+		Usage: "Set false to make drouter only connect to docker networks with local containers.",
 	}
-	var flagP2PAddr = cli.StringFlag{
-		Name: "p2p-addr",
+	var flagHostShortcut = cli.BoolFlag{
+		Name:  "host-shortcut",
+		Usage: "Set true to insert routes in the host destined for docker networks pointing to drouter over a host<->drouter p2p link.",
+	}
+	var flagContainerGateway = cli.BoolFlag{
+		Name:  "container-gateway",
+		Usage: "Set true to set the container gateway to drouter.",
+	}
+	var flagHostGateway = cli.BoolFlag{
+		Name:  "host-gateway",
+		Usage: "Set true to insert a default route on drouter pointing to the host over the host<->drouter p2p link. (implies --host-shortcut)",
+	}
+	var flagMasquerade = cli.BoolFlag{
+		Name:  "masquerade",
+		Usage: "Set true to masquerade container traffic to it's host's interface IP address.",
+	}
+	var flagP2PNet = cli.StringFlag{
+		Name:  "p2p-net",
 		Value: "172.29.255.252/30",
-		Usage: "The network to use for routing between the host and the container. The host will be assigned the first host address in the network, the container will be assigned the second. This is a p2p link so anything beyond a /30 is unnecessary",
+		Usage: "Use this option to customize the network used for the host<->drouter p2p link.",
 	}
+	var flagStaticRoutes = cli.StringSliceFlag{
+		Name:  "static-route",
+		Usage: "Specify one or many CIDR addresses that will be installed as routes via drouter to all containers.",
+	}
+	var flagTransitNet = cli.StringFlag{
+		Name:  "transit-net",
+		Usage: "Set a transit network for drouter to always connect to. Network should have 'drouter' option set. If network has a gateway, and --host-gateway=false, drouter's default gateway will be through this network's gateway. (this option is required with --no-aggressive)",
+	}
+
 	app := cli.NewApp()
 	app.Name = "docker-drouter"
 	app.Usage = "Docker Distributed Router"
@@ -56,40 +71,84 @@ func main() {
 	app.Flags = []cli.Flag{
 		flagDebug,
 		flagIPOffset,
-		flagAggressive,
-		flagDisableP2P,
-		flagP2PAddr,
+		flagDRouterInstance,
+		flagNoAggressive,
+		flagHostShortcut,
+		flagContainerGateway,
+		flagHostGateway,
+		flagMasquerade,
+		flagP2PNet,
+		flagStaticRoutes,
+		flagTransitNet,
 	}
 	app.Action = Run
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Run initializes the driver
-func Run(ctx *cli.Context) {
+func Run(ctx *cli.Context) error {
 	log.SetFormatter(&log.TextFormatter{
 		//ForceColors: false,
 		//DisableColors: true,
 		DisableTimestamp: false,
-		FullTimestamp: true,
+		FullTimestamp:    true,
 	})
 
 	if ctx.Bool("debug") {
 		log.SetLevel(log.DebugLevel)
 		log.Info("Debug logging enabled")
 	}
-
-	if !ctx.Bool("disable-p2p") {
-		err := drouter.MakeP2PLink(ctx.String("p2p-addr"))
-		if err != nil {
-			log.Error("Error creating P2P Link")
-			log.Fatal(err)
-		}
+	if !ctx.Bool("no-aggressive") {
+		panic("Sorry, --no-aggressive mode is not supported yet.")
+	}
+	if ctx.Bool("host-shortcut") {
+		panic("Sorry, --host-shortcut mode is not supported yet.")
+	}
+	if ctx.Bool("container-gateway") {
+		panic("Sorry, --container-gateway mode is not supported yet.")
+	}
+	if ctx.Bool("host-gateway") {
+		panic("Sorry, --host-gateway mode is not supported yet.")
+	}
+	if ctx.Bool("masquerade") {
+		panic("Sorry, --masquerade mode is not supported yet.")
+	}
+	if ctx.String("transit-net") != "" {
+		panic("Sorry, --transit-net is not supported yet.")
 	}
 
-	if ctx.Bool("aggressive") {
-		log.Info("Aggressive mode enabled")
-		go drouter.WatchNetworks(ctx.Int("ip-offset"))
+	opts := &drouter.DistributedRouterOptions{
+		IPOffset:         ctx.Int("ip-offset"),
+		Aggressive:       !ctx.Bool("no-aggressive"),
+		HostShortcut:     ctx.Bool("host-shortcut"),
+		ContainerGateway: ctx.Bool("container-gateway"),
+		HostGateway:      ctx.Bool("host-gateway"),
+		Masquerade:       ctx.Bool("masquerade"),
+		P2PAddr:          ctx.String("p2p-net"),
+		StaticRoutes:     ctx.StringSlice("static-route"),
+		TransitNet:       ctx.String("transit-net"),
+		InstanceName:     ctx.String("drouter-instance"),
 	}
 
-	drouter.WatchEvents()
+	quit := make(chan struct{})
+
+	c := make(chan os.Signal)
+	defer close(c)
+	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, syscall.SIGTERM)
+	go func() {
+		<-c
+		close(quit)
+	}()
+
+	err := drouter.Run(opts, quit)
+	if err != nil {
+		log.WithFields(log.Fields{"Error": err}).Error("Error running drouter.")
+		return err
+	}
+
+	return nil
 }

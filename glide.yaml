@@ -1,7 +1,7 @@
 package: github.com/TrilliumIT/docker-drouter
 import:
 - package: github.com/Sirupsen/logrus
-- package: github.com/codegangsta/cli
+- package: github.com/urfave/cli
 - package: github.com/docker/engine-api
   subpackages:
   - client
@@ -13,9 +13,13 @@ import:
 - package: github.com/vdemeester/docker-events
 - package: github.com/vishvananda/netlink
 - package: github.com/vishvananda/netns
-- package: github.com/ziutek/utils
   subpackages:
   - netaddr
 - package: golang.org/x/net
   subpackages:
   - context
+- package: github.com/TrilliumIT/iputil
+- package: github.com/stretchr/testify
+  subpackages:
+  - assert
+  - require

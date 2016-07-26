@@ -1,58 +1,66 @@
-hash: 75bdf311a08de67538ba28da9c7fa7c5c9a7a9fdbe46ecac765c4a5943ec3f44
-updated: 2016-06-01T09:37:35.315685067-04:00
+hash: 020ae59b45943f4c33c3153ceb4ca05680520a8cd7a8100e0a71f7a0185a7803
+updated: 2016-07-01T16:23:03.941073282-04:00
 imports:
-- name: github.com/codegangsta/cli
-  version: 9a18ffad6c548ca4d458d4c30a8aa4d181cf92fa
 - name: github.com/docker/distribution
-  version: d9c4f03bcce7a4967b5ec07d7028786c4081b890
+  version: ffbe9b7c635082432c4adb0395b7426ed5081cff
   subpackages:
   - reference
   - digest
 - name: github.com/docker/engine-api
-  version: dbdcba0b66ca7624c8c9d55c2201a2a5c62d8258
+  version: f90ecdb1e989f834dabbd91807e891094aa069fe
   subpackages:
   - client
   - types
   - types/events
   - types/filters
   - types/network
+  - types/container
   - client/transport
   - client/transport/cancellable
-  - types/container
   - types/reference
   - types/registry
+  - types/swarm
   - types/time
   - types/versions
   - types/blkiodev
   - types/strslice
 - name: github.com/docker/go-connections
-  version: c7838b258fbfa3fe88eecfb2a0e08ea0dbd6a646
+  version: 990a1a1a70b0da4c4cb70e117971a4f0babfbf1a
   subpackages:
   - sockets
   - tlsconfig
   - nat
 - name: github.com/docker/go-units
-  version: 09dda9d4b0d748c57c14048906d3d094a58ec0c9
+  version: f2d77a61e3c169b43402a0a1e84f06daf29b8190
 - name: github.com/llimllib/ipaddress
   version: 2154bde6c1739cd49c475abbcc82e3f4ff257e5e
 - name: github.com/Microsoft/go-winio
-  version: 4f1a71750d95a5a8a46c40a67ffbed8129c2f138
+  version: ce2922f643c8fd76b46cadc7f404a06282678b34
 - name: github.com/opencontainers/runc
-  version: 4450f7c8dea183407c91c35b19051eea22dc5965
+  version: 9b3a2f16345aa015ca286835f6f5eb67ea60aa4b
   subpackages:
   - libcontainer/user
 - name: github.com/Sirupsen/logrus
   version: f3cfb454f4c209e6668c95216c4744b8fddb2356
+  subpackages:
+  - hooks/test
+- name: github.com/stretchr/testify
+  version: d77da356e56a7428ad25149ca77381849a6a5232
+  subpackages:
+  - assert
+  - require
+- name: github.com/TrilliumIT/iputil
+  version: bfe8f86b05dc24446e8577128bdc3e5c2bb5d5c8
+- name: github.com/urfave/cli
+  version: 1efa31f08b9333f1bd4882d61f9d668a70cd902e
 - name: github.com/vdemeester/docker-events
-  version: 20e6d2db238723e68197a9e3c6c34c99a9893a9c
+  version: be74d4929ec1ad118df54349fda4b0cba60f849b
 - name: github.com/vishvananda/netlink
-  version: 7995ff5647a22cbf0dc41bf5c0e977bdb0d5c6b7
+  version: 734d02c3e202f682c74b71314b2c61eec0170fd4
   subpackages:
   - nl
 - name: github.com/vishvananda/netns
   version: 8ba1072b58e0c2a240eb5f6120165c7776c3e7b8
-- name: github.com/ziutek/utils
-  version: d8fe304b0db2bae8e6709e46d19b355926c9f7fc
   subpackages:
   - netaddr
 - name: golang.org/x/net
@@ -61,8 +69,16 @@ imports:
   - context
   - proxy
 - name: golang.org/x/sys
-  version: 076b546753157f758b316e59bcb51e6807c04057
+  version: 62bee037599929a6e9146f29d10dd5208c43507d
   subpackages:
   - unix
   - windows
-devImports: []
+testImports:
+- name: github.com/davecgh/go-spew
+  version: 5215b55f46b2b919f50a1df0eaa5886afe4e3b3d
+  subpackages:
+  - spew
+- name: github.com/pmezard/go-difflib
+  version: d8ed2627bdf02c080bf22230dbb337003b7aba2d
+  subpackages:
+  - difflib
