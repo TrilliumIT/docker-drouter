@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -84,7 +85,7 @@ func main() {
 	app.Action = Run
 	err := app.Run(os.Args)
 	if err != nil {
-		panic(err)
+		log.WithError(err).Fatal("Error from Run")
 	}
 }
 
@@ -102,23 +103,29 @@ func Run(ctx *cli.Context) error {
 		log.Info("Debug logging enabled")
 	}
 	if ctx.Bool("no-aggressive") {
-		panic("Sorry, --no-aggressive mode is not supported yet.")
+		log.Error("Sorry, --no-aggressive mode is not supported yet.")
+		return fmt.Errorf("Unsupported Options")
 	}
 	if ctx.Bool("host-shortcut") {
-		panic("Sorry, --host-shortcut mode is not supported yet.")
+		log.Error("Sorry, --host-shortcut mode is not supported yet.")
+		return fmt.Errorf("Unsupported Options")
 	}
 	if ctx.Bool("container-gateway") {
-		panic("Sorry, --container-gateway mode is not supported yet.")
+		log.Error("Sorry, --container-gateway mode is not supported yet.")
+		return fmt.Errorf("Unsupported Options")
 	}
 	if ctx.Bool("host-gateway") {
-		panic("Sorry, --host-gateway mode is not supported yet.")
+		log.Error("Sorry, --host-gateway mode is not supported yet.")
+		return fmt.Errorf("Unsupported Options")
 	}
 	if ctx.Bool("masquerade") {
-		panic("Sorry, --masquerade mode is not supported yet.")
+		log.Error("Sorry, --masquerade mode is not supported yet.")
+		return fmt.Errorf("Unsupported Options")
 	}
-	if ctx.String("transit-net") != "" {
-		panic("Sorry, --transit-net is not supported yet.")
-	}
+	//if ctx.String("transit-net") != "" {
+	//	log.Error("Sorry, --transit-net is not supported yet.")
+	//	return fmt.Errorf("Unsupported Options")
+	//}
 
 	opts := &drouter.DistributedRouterOptions{
 		IPOffset:         ctx.Int("ip-offset"),

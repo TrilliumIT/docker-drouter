@@ -1,4 +1,6 @@
+main
 docker-drouter
+make-test.sh
 vendor
 *.swp
 coverage

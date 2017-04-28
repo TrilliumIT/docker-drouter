@@ -1,4 +1,4 @@
-FROM golang:1.6.2-wheezy
+FROM golang:1.8
 
 MAINTAINER Trillium IT <webmaster@trilliumit.com>
 
@@ -14,8 +14,10 @@ RUN mkdir -p ${SRC_ROOT}
 WORKDIR ${SRC_ROOT}
 
 # Used to only go get if sources change.
-ADD . ${SRC_ROOT}/
+ADD glide.* ${SRC_ROOT}/
 RUN $GOPATH/bin/glide install
+
+ADD . ${SRC_ROOT}/
 RUN go get $($GOPATH/bin/glide novendor)
 
 ENTRYPOINT ["/go/bin/docker-drouter"]

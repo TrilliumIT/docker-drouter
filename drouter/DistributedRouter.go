@@ -558,9 +558,7 @@ func (dr *distributedRouter) processRouteAddEvent(ru *netlink.RouteUpdate) error
 		return nil
 	}
 	if ru.Dst == nil {
-		//we manage default routes separately
-		//TODO: Add logic to fix default route since it was changed by a drn.connect()
-		return nil
+		return dr.setDefaultRoute()
 	}
 	if ru.Dst.IP.IsLoopback() {
 		return nil
@@ -606,15 +604,17 @@ func (dr *distributedRouter) initTransitNet() error {
 	transitNetID = nr.ID
 
 	//if transit net has a gateway, make it drouter's default route
-	if len(nr.Options["gateway"]) > 0 && !hostGateway {
-		dr.defaultRoute = net.ParseIP(nr.Options["gateway"])
-		log.Debugf("Gateway option detected on transit net as: %v", dr.defaultRoute)
+	for _, ipamConfig := range nr.IPAM.Config {
+		if len(ipamConfig.Gateway) > 0 && !hostGateway {
+			dr.defaultRoute = net.ParseIP(ipamConfig.Gateway)
+			log.Debugf("Gateway option detected on transit net as: %v", dr.defaultRoute)
+			break
+		}
 	}
 	dr.networks[nr.ID].connect()
 	if err != nil {
 		log.Errorf("Failed to connect to transit net: %v", nr.Name)
 		return err
 	}
-
-	return nil
+	return dr.setDefaultRoute()
 }
