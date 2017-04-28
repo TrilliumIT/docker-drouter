@@ -1,5 +1,5 @@
-hash: 020ae59b45943f4c33c3153ceb4ca05680520a8cd7a8100e0a71f7a0185a7803
-updated: 2017-04-28T11:56:10.92211692-04:00
+hash: 45cc9a53fb7b0dd2225845b5ea473707705a2786ff84b09ee6e39f2dd29c7f15
+updated: 2017-04-28T15:41:46.815408348-04:00
 imports:
 - name: github.com/docker/distribution
   version: cd27f179f2c10c5d300e6d09025b538c475b0d51
@@ -43,11 +43,6 @@ imports:
   version: 4b6ea7319e214d98c938f12692336f7ca9348d6b
   subpackages:
   - hooks/test
-- name: github.com/stretchr/testify
-  version: 4d4bfba8f1d1027c4fdbe371823030df51419987
-  subpackages:
-  - assert
-  - require
 - name: github.com/TrilliumIT/iputil
   version: bd8d0991afc7eb3bc365a8799ba5e5573ecff2ec
 - name: github.com/urfave/cli
@@ -60,8 +55,6 @@ imports:
   - nl
 - name: github.com/vishvananda/netns
   version: 54f0e4339ce73702a0607f49922aaa1e749b418d
-  subpackages:
-  - netaddr
 - name: golang.org/x/net
   version: 4876518f9e71663000c348837735820161a42df7
   subpackages:
@@ -81,3 +74,8 @@ testImports:
   version: d8ed2627bdf02c080bf22230dbb337003b7aba2d
   subpackages:
   - difflib
+- name: github.com/stretchr/testify
+  version: 4d4bfba8f1d1027c4fdbe371823030df51419987
+  subpackages:
+  - assert
+  - require
