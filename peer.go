@@ -1,11 +1,12 @@
-package main
+package routeShare
 
 import (
 	"encoding/gob"
 	log "github.com/Sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"net"
-	"strconv"
+	"strings"
+	"sync"
 )
 
 type subscriber struct {
@@ -13,19 +14,25 @@ type subscriber struct {
 	del chan struct{}
 }
 
-func startTCPListener(peerCh chan<- *net.Conn) {
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(*port))
+func startTCPListener(peerCh chan<- *net.Conn, lAddr string, done <-chan struct{}) {
+	listener, err := net.Listen("tcp", lAddr)
 	if err != nil {
 		log.Error("Failed to setup listener")
 		log.Error(err)
 		return
 	}
+	go func() {
+		<-done
+		listener.Close()
+	}()
 
 	for {
 		c, err := listener.Accept()
 		if err != nil {
-			log.Error("Failed to accept listener")
-			log.Error(err)
+			if strings.HasSuffix(err.Error(), "use of closed network connection") {
+				return
+			}
+			log.WithError(err).Error("Failed to accept listener")
 			continue
 		}
 		src := c.RemoteAddr().(*net.TCPAddr).IP
@@ -56,10 +63,12 @@ type procConReqOpts struct {
 	disconnectPeer <-chan string
 }
 
-func processConnectionRequest(o *procConReqOpts) {
+func processConnectionRequest(o *procConReqOpts, done <-chan struct{}) {
 	peers := make(map[string]struct{})
 	for {
 		select {
+		case <-done:
+			return
 		case p := <-o.connectPeer:
 			if _, ok := peers[p]; !ok {
 				c, err := net.Dial("tcp", p)
@@ -81,15 +90,26 @@ func processConnectionRequest(o *procConReqOpts) {
 	}
 }
 
-func startPeer(connectPeer <-chan string, helloMsg *hello) {
+func startPeer(connectPeer <-chan string, helloMsg *hello, done <-chan struct{}) {
 	localRouteUpdate := make(chan *exportRoute)
+	wg := sync.WaitGroup{}
 
 	// Monitor local route table changes
-	go watchRoutes(localRouteUpdate)
+	wg.Add(1)
+	go func() {
+		watchRoutes(localRouteUpdate, done)
+		log.Debug("WatchRoutes done")
+		wg.Done()
+	}()
 
 	// listen for incoming tcp connections
 	peerCh := make(chan *net.Conn)
-	go startTCPListener(peerCh)
+	wg.Add(1)
+	go func() {
+		startTCPListener(peerCh, helloMsg.ListenAddr, done)
+		log.Debug("tcplistener done")
+		wg.Done()
+	}()
 
 	// process new connections, from hello or tcp
 	peerConnected := make(chan string)
@@ -100,7 +120,14 @@ func startPeer(connectPeer <-chan string, helloMsg *hello) {
 		peerConnected:  peerConnected,
 		disconnectPeer: disconnectPeer,
 	}
-	go processConnectionRequest(procOpts)
+	crWg := sync.WaitGroup{}
+	crDone := make(chan struct{})
+	crWg.Add(1)
+	go func() {
+		processConnectionRequest(procOpts, crDone)
+		log.Debug("processconnectionrequests done")
+		crWg.Done()
+	}()
 
 	// Handle new peers joining
 	var subscribers []*subscriber
@@ -113,12 +140,22 @@ func startPeer(connectPeer <-chan string, helloMsg *hello) {
 		addSubscriber:  addSubscriber,
 		disconnectPeer: disconnectPeer,
 	}
-	go peerConnections(peerOpts)
+	wg.Add(1)
+	go func() {
+		peerConnections(peerOpts, done)
+		log.Debug("peerconnections done")
+		wg.Done()
+	}()
 
 	// Manage listening peers
 	delSubscriber := make(chan int)
 	for {
 		select {
+		case <-done:
+			wg.Wait()
+			close(crDone)
+			crWg.Wait()
+			return
 		case d := <-delSubscriber:
 			if len(subscribers) <= 1 {
 				subscribers = []*subscriber{}
@@ -131,7 +168,7 @@ func startPeer(connectPeer <-chan string, helloMsg *hello) {
 			// Start a routine to listen for closing s.del
 			// send delSubscriber for the position of s when triggered
 			go func() {
-				_ = <-s.del
+				<-s.del
 				close(s.cb)
 				delSubscriber <- i
 			}()
@@ -157,9 +194,17 @@ type peerConnOpts struct {
 	disconnectPeer chan<- string
 }
 
-func peerConnections(o *peerConnOpts) {
+func peerConnections(o *peerConnOpts, done <-chan struct{}) {
+	wg := sync.WaitGroup{}
 	for {
-		c := *<-o.peerCh
+		var c net.Conn
+		select {
+		case cp := <-o.peerCh:
+			c = *cp
+		case <-done:
+			wg.Wait()
+			return
+		}
 
 		// Send hello on all new tcp connections
 		e := gob.NewEncoder(c)
@@ -193,12 +238,14 @@ func peerConnections(o *peerConnOpts) {
 		// die gracefully
 		sendDie := make(chan struct{})
 		recvDie := make(chan struct{})
+		wg.Add(1)
 		go func() {
+			defer log.Debug("sendDie done")
+			defer wg.Done()
 			select {
-			case _ = <-sendDie:
-				close(recvDie)
-			case _ = <-recvDie:
-				close(sendDie)
+			case <-sendDie:
+			case <-recvDie:
+			case <-done:
 			}
 			close(s.del)
 			o.disconnectPeer <- h.ListenAddr
@@ -206,14 +253,17 @@ func peerConnections(o *peerConnOpts) {
 			if err != nil {
 				log.Errorf("Failed to delete all routes via %v", c.RemoteAddr())
 			}
+			c.Close()
 		}()
 
 		// Send updates to this peer
+		wg.Add(1)
 		go func() {
+			defer log.Debug("encode done")
+			defer wg.Done()
 			e := gob.NewEncoder(c)
 			srcAddr := c.LocalAddr().(*net.TCPAddr).IP
-			for {
-				r := <-s.cb
+			for r := range s.cb {
 				if r == nil { // r is closed on subscriber
 					return
 				}
@@ -232,14 +282,19 @@ func peerConnections(o *peerConnOpts) {
 		}()
 
 		// Recieve messages from this peer
+		wg.Add(1)
 		go func() {
+			defer log.Debug("decode done")
+			defer wg.Done()
 			d := gob.NewDecoder(c)
 			for {
 				er := &exportRoute{}
 				err := d.Decode(er)
 				if err != nil {
-					log.Error("Failed to decode route update")
-					log.Error(err)
+					if strings.HasSuffix(err.Error(), "use of closed network connection") {
+						return
+					}
+					log.WithError(err).Error("Failed to decode route update")
 					close(recvDie)
 					return
 				}

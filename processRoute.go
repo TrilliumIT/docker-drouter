@@ -1,4 +1,4 @@
-package main
+package routeShare
 
 import (
 	log "github.com/Sirupsen/logrus"
@@ -48,28 +48,28 @@ func processRoute(ru *exportRoute, s net.Addr) error {
 
 	switch {
 	case ru.Type == syscall.RTM_NEWROUTE:
-		r := &netlink.Route{
+		err := netlink.RouteAdd(&netlink.Route{
 			Dst:      ru.Dst,
 			Gw:       src,
 			Priority: ru.Priority + 100,
-		}
-		err := netlink.RouteAdd(r)
+		})
 		if err != nil {
-			log.Errorf("Failed to add route: %v", r)
-			log.Error(err)
+			log.WithField("update", ru).WithField("source", src).WithError(err).Error("Error adding route")
 			return err
 		}
 	case ru.Type == syscall.RTM_DELROUTE:
-		routes, err := netlink.RouteGet(ru.Dst.IP)
+		err := netlink.RouteDel(&netlink.Route{
+			Dst:      ru.Dst,
+			Gw:       src,
+			Priority: ru.Priority + 100,
+		})
 		if err != nil {
-			log.Error("Failed to get routes")
-			log.Error(err)
-			return err
-		}
-		for _, r := range routes {
-			if r.Gw.Equal(src) {
-				netlink.RouteDel(&r)
+			if err.Error() == "no such process" {
+				// The route doesn't exist, no problem
+				return nil
 			}
+			log.WithField("update", ru).WithField("source", src).WithError(err).Error("Error deleting route")
+			return err
 		}
 	}
 	return nil

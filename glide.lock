@@ -1,16 +1,16 @@
 hash: 0a4af717a25f09ba256253d1462b139a928da331d8c1886191d9343eec59a287
-updated: 2016-06-19T21:53:46.558232229-04:00
+updated: 2017-04-28T13:17:46.261512739-04:00
 imports:
 - name: github.com/Sirupsen/logrus
-  version: f3cfb454f4c209e6668c95216c4744b8fddb2356
+  version: 4b6ea7319e214d98c938f12692336f7ca9348d6b
 - name: github.com/vishvananda/netlink
-  version: 293adec04146bfb07bf34f75921ebc9c1ee2cd74
+  version: 2632e243fb1a61b67ad23b04c16a5a48315e9391
   subpackages:
   - nl
 - name: github.com/vishvananda/netns
-  version: 8ba1072b58e0c2a240eb5f6120165c7776c3e7b8
+  version: 54f0e4339ce73702a0607f49922aaa1e749b418d
 - name: golang.org/x/sys
-  version: 62bee037599929a6e9146f29d10dd5208c43507d
+  version: a646d33e2ee3172a661fc09bca23bb4889a41bc8
   subpackages:
   - unix
-devImports: []
+testImports: []

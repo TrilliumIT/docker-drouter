@@ -1,22 +1,21 @@
-package main
+package routeShare
 
 import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 )
 
-func watchRoutes(localRouteUpdate chan<- *exportRoute) {
-	rud := make(chan struct{})
-	defer close(rud)
+func watchRoutes(localRouteUpdate chan<- *exportRoute, done <-chan struct{}) {
 	ruc := make(chan netlink.RouteUpdate)
-	defer close(ruc)
-	err := netlink.RouteSubscribe(ruc, rud)
+	err := netlink.RouteSubscribe(ruc, done)
+	go func() {
+		<-done
+	}()
 	if err != nil {
 		log.Error("Error subscribing to route table")
 		log.Fatal(err)
 	}
-	for {
-		ru := <-ruc
+	for ru := range ruc {
 		if ru.Gw != nil {
 			// we only care about directly connected routes
 			continue
