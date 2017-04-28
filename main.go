@@ -102,10 +102,10 @@ func Run(ctx *cli.Context) error {
 		log.SetLevel(log.DebugLevel)
 		log.Info("Debug logging enabled")
 	}
-	if ctx.Bool("no-aggressive") {
-		log.Error("Sorry, --no-aggressive mode is not supported yet.")
-		return fmt.Errorf("Unsupported Options")
-	}
+	//if ctx.Bool("no-aggressive") {
+	//	log.Error("Sorry, --no-aggressive mode is not supported yet.")
+	//	return fmt.Errorf("Unsupported Options")
+	//}
 	if ctx.Bool("host-shortcut") {
 		log.Error("Sorry, --host-shortcut mode is not supported yet.")
 		return fmt.Errorf("Unsupported Options")

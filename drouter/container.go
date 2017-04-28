@@ -439,7 +439,7 @@ func (c *container) disconnectEvent(drn *network) error {
 		}
 	}
 
-	if aggressive {
+	if aggressive || drn.ID == transitNetID {
 		return nil
 	}
 
