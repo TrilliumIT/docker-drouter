@@ -619,8 +619,9 @@ func (dr *distributedRouter) initTransitNet(wg sync.WaitGroup) error {
 		log.Errorf("Failed to connect to transit net: %v", nr.Name)
 		return err
 	}
-	gwAddr := netlink.Addr{}
-	gwAddr.IP = dr.defaultRoute
+	gwAddr := netlink.Addr{
+		IPNet: &net.IPNet{IP: dr.defaultRoute},
+	}
 	transitIPs, err := getPathIPs(gwAddr)
 	if err != nil || len(transitIPs) < 1 {
 		log.WithError(err).Error("Error getting transitnet IP")

@@ -6,7 +6,7 @@ import (
 )
 
 func watchRoutes(localRouteUpdate chan<- *exportRoute, done <-chan struct{}) {
-	ruc := make(chan netlink.RouteUpdate)
+	ruc := make(chan netlink.RouteUpdate, 128)
 	err := netlink.RouteSubscribe(ruc, done)
 	go func() {
 		<-done

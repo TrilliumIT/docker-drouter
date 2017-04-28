@@ -1,14 +1,11 @@
 package routeShare
 
 import (
-	log "github.com/Sirupsen/logrus"
 	"net"
 	"sync"
 )
 
 func Start(ip net.IP, port, instance int, quit <-chan struct{}) error {
-	log.SetLevel(log.DebugLevel)
-
 	var wg sync.WaitGroup
 
 	connectPeer := make(chan string)
