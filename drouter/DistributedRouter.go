@@ -8,6 +8,7 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/TrilliumIT/docker-drouter/routeShare"
 	dockerclient "github.com/docker/engine-api/client"
 	dockertypes "github.com/docker/engine-api/types"
 	dockerevents "github.com/docker/engine-api/types/events"
@@ -364,8 +365,9 @@ func (dr *distributedRouter) start() error {
 		}
 	}
 
+	routeshareWG := sync.WaitGroup{}
 	if len(transitNetName) > 0 {
-		err = dr.initTransitNet()
+		err = dr.initTransitNet(routeshareWG)
 		if err != nil {
 			return err
 		}
@@ -428,6 +430,7 @@ func (dr *distributedRouter) start() error {
 		}(drn)
 	}
 
+	routeshareWG.Wait()
 	disconnectWG.Wait()
 	log.Debug("Finished all network disconnects.")
 
@@ -592,7 +595,7 @@ func (dr *distributedRouter) getNetwork(id string) (*network, bool) {
 	return drn, ok
 }
 
-func (dr *distributedRouter) initTransitNet() error {
+func (dr *distributedRouter) initTransitNet(wg sync.WaitGroup) error {
 	nr, err := dockerClient.NetworkInspect(context.Background(), transitNetName)
 	if err != nil {
 		log.Errorf("Failed to inspect network for transit net: %v", transitNetName)
@@ -616,5 +619,18 @@ func (dr *distributedRouter) initTransitNet() error {
 		log.Errorf("Failed to connect to transit net: %v", nr.Name)
 		return err
 	}
+	gwAddr := netlink.Addr{}
+	gwAddr.IP = dr.defaultRoute
+	transitIPs, err := getPathIPs(gwAddr)
+	if err != nil || len(transitIPs) < 1 {
+		log.WithError(err).Error("Error getting transitnet IP")
+		return err
+	}
+	//TODO make these parameters
+	wg.Add(1)
+	go func() {
+		routeShare.Start(transitIPs[0], 9999, 1, stopChan)
+		wg.Done()
+	}()
 	return dr.setDefaultRoute()
 }

@@ -485,9 +485,40 @@ func (c *container) disconnectEvent(drn *network) error {
 	return nil
 }
 
+func getPathIPs(addrs ...netlink.Addr) ([]net.IP, error) {
+	var ips []net.IP
+	for _, addr := range addrs {
+		if addr.Label == "lo" {
+			continue
+		}
+
+		log.WithFields(log.Fields{
+			"IP": addr.IP,
+		}).Debug("Getting routes to IP")
+		srcRoutes, err := netlink.RouteGet(addr.IP)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"IP":    addr.IP,
+				"Error": err,
+			}).Error("Failed to get routes to IP")
+			continue
+		}
+		for _, srcRoute := range srcRoutes {
+			if srcRoute.Gw == nil {
+				log.WithFields(log.Fields{
+					"IP":  addr.IP,
+					"Src": srcRoute.Src,
+				}).Debug("Found direct route to IP from Src.")
+				ips = append(ips, srcRoute.Src)
+			}
+		}
+	}
+
+	return ips, nil
+}
+
 //returns a drouter IP that is on some same network as provided container
 func (c *container) getPathIPs() ([]net.IP, error) {
-	var ips []net.IP
 	c.log.Debug("Getting path IPs")
 	if c.handle == nil {
 		err := fmt.Errorf("No namespace handle for container, is it running?")
@@ -502,34 +533,7 @@ func (c *container) getPathIPs() ([]net.IP, error) {
 		return nil, err
 	}
 
-	for _, addr := range addrs {
-		if addr.Label == "lo" {
-			continue
-		}
-
-		c.log.WithFields(log.Fields{
-			"IP": addr.IP,
-		}).Debug("Getting routes to container IP")
-		srcRoutes, err := netlink.RouteGet(addr.IP)
-		if err != nil {
-			c.log.WithFields(log.Fields{
-				"IP":    addr.IP,
-				"Error": err,
-			}).Error("Failed to get routes to container IP")
-			continue
-		}
-		for _, srcRoute := range srcRoutes {
-			if srcRoute.Gw == nil {
-				c.log.WithFields(log.Fields{
-					"IP":  addr.IP,
-					"Src": srcRoute.Src,
-				}).Debug("Found direct route to IP from Src.")
-				ips = append(ips, srcRoute.Src)
-			}
-		}
-	}
-
-	return ips, nil
+	return getPathIPs(addrs...)
 }
 
 func (c *container) getPathIP() (net.IP, error) {
