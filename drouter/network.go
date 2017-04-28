@@ -185,8 +185,8 @@ func (n *network) disconnectEvent() error {
 func (n *network) removeRoutes() {
 	var routeDelWG sync.WaitGroup
 	for _, subnet := range n.Subnets {
-		routeDelWG.Add(1)
 		sn := subnet
+		routeDelWG.Add(1)
 		go func() {
 			defer routeDelWG.Done()
 			coveredByStatic := subnetCoveredByStatic(sn)

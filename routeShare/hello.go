@@ -14,21 +14,21 @@ type hello struct {
 	Instance   int
 }
 
-func startHello(ip net.IP, port, instance int, connectPeer chan<- string, hc chan<- *hello, done <-chan struct{}) error {
+func (r *RouteShare) startHello(connectPeer chan<- string, hc chan<- *hello, done <-chan struct{}) error {
 	mcastAddr, err := net.ResolveUDPAddr("udp", "224.0.0.1:9999")
 	if err != nil {
 		return err
 	}
 
-	c, err := net.DialUDP("udp", &net.UDPAddr{IP: ip}, mcastAddr)
+	c, err := net.DialUDP("udp", &net.UDPAddr{IP: r.ip}, mcastAddr)
 
 	lAddr, _, err := net.SplitHostPort(c.LocalAddr().String())
 	if err != nil {
 		return err
 	}
 	helloMsg := &hello{
-		ListenAddr: lAddr + ":" + strconv.Itoa(port),
-		Instance:   instance,
+		ListenAddr: lAddr + ":" + strconv.Itoa(r.port),
+		Instance:   r.instance,
 	}
 
 	hc <- helloMsg

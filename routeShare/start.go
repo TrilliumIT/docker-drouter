@@ -1,11 +1,32 @@
 package routeShare
 
 import (
+	log "github.com/Sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 	"net"
 	"sync"
+	"syscall"
 )
 
-func Start(ip net.IP, port, instance int, quit <-chan struct{}) error {
+type RouteShare struct {
+	ip               net.IP
+	port             int
+	instance         int
+	quit             <-chan struct{}
+	localRouteUpdate chan *exportRoute
+}
+
+func NewRouteShare(ip net.IP, port, instance int, quit <-chan struct{}) *RouteShare {
+	return &RouteShare{
+		ip:               ip,
+		port:             port,
+		instance:         instance,
+		quit:             quit,
+		localRouteUpdate: make(chan *exportRoute),
+	}
+}
+
+func (r *RouteShare) Start() error {
 	var wg sync.WaitGroup
 
 	connectPeer := make(chan string)
@@ -18,25 +39,83 @@ func Start(ip net.IP, port, instance int, quit <-chan struct{}) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ech <- startHello(ip, port, instance, connectPeer, hc, done)
+		ech <- r.startHello(connectPeer, hc, done)
 	}()
 
 	helloMsg := <-hc
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		startPeer(connectPeer, helloMsg, done)
+		r.startPeer(connectPeer, helloMsg, done)
 	}()
 
 	var err error
 	select {
 	case err = <-ech:
 		close(done)
-	case <-quit:
+	case <-r.quit:
 		close(done)
 		err = <-ech
 	}
 
 	wg.Wait()
 	return err
+}
+
+func (r *RouteShare) AddRoute(dst *net.IPNet, priority int) {
+	er := &exportRoute{
+		Type:     syscall.RTM_NEWROUTE,
+		Dst:      dst,
+		Priority: priority,
+	}
+	log.Debugf("Sending route add: %v", er)
+	r.localRouteUpdate <- er
+}
+
+func (r *RouteShare) DelRoute(dst *net.IPNet, priority int) {
+	er := &exportRoute{
+		Type:     syscall.RTM_DELROUTE,
+		Dst:      dst,
+		Priority: priority,
+	}
+	log.Debugf("Sending route delete: %v", er)
+	r.localRouteUpdate <- er
+}
+
+func (r *RouteShare) ShareRouteUpdate(ru *netlink.RouteUpdate) {
+	if ru.Gw != nil {
+		// we only care about directly connected routes
+		return
+	}
+	if ru.Table == 255 {
+		// We don't want entries from the local routing table
+		// http://linux-ip.net/html/routing-tables.html
+		return
+	}
+	if ru.Src.IsLoopback() {
+		return
+	}
+	if ru.Dst.IP.IsLoopback() {
+		return
+	}
+	if ru.Src.IsLinkLocalUnicast() {
+		return
+	}
+	if ru.Dst.IP.IsLinkLocalUnicast() {
+		return
+	}
+	if ru.Dst.IP.IsInterfaceLocalMulticast() {
+		return
+	}
+	if ru.Dst.IP.IsLinkLocalMulticast() {
+		return
+	}
+	er := &exportRoute{
+		Type:     ru.Type,
+		Dst:      ru.Dst,
+		Gw:       ru.Gw,
+		Priority: ru.Priority,
+	}
+	log.Debugf("Sending route update: %v", er)
+	r.localRouteUpdate <- er
 }

@@ -90,17 +90,8 @@ func processConnectionRequest(o *procConReqOpts, done <-chan struct{}) {
 	}
 }
 
-func startPeer(connectPeer <-chan string, helloMsg *hello, done <-chan struct{}) {
-	localRouteUpdate := make(chan *exportRoute)
+func (r *RouteShare) startPeer(connectPeer <-chan string, helloMsg *hello, done <-chan struct{}) {
 	wg := sync.WaitGroup{}
-
-	// Monitor local route table changes
-	wg.Add(1)
-	go func() {
-		watchRoutes(localRouteUpdate, done)
-		log.Debug("WatchRoutes done")
-		wg.Done()
-	}()
 
 	// listen for incoming tcp connections
 	peerCh := make(chan *net.Conn)
@@ -172,7 +163,7 @@ func startPeer(connectPeer <-chan string, helloMsg *hello, done <-chan struct{})
 				close(s.cb)
 				delSubscriber <- i
 			}()
-		case r := <-localRouteUpdate:
+		case r := <-r.localRouteUpdate:
 			for _, s := range subscribers {
 				select {
 				// just in case a del is pending

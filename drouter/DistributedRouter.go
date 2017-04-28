@@ -41,6 +41,7 @@ var (
 	dockerClient *dockerclient.Client
 	transitNetID string
 	stopChan     <-chan struct{}
+	rs           *routeShare.RouteShare
 )
 
 //DistributedRouterOptions Options for our DistributedRouter instance
@@ -628,9 +629,10 @@ func (dr *distributedRouter) initTransitNet(wg sync.WaitGroup) error {
 		return err
 	}
 	//TODO make these parameters
+	rs = routeShare.NewRouteShare(transitIPs[0], 9999, 1, stopChan)
 	wg.Add(1)
 	go func() {
-		routeShare.Start(transitIPs[0], 9999, 1, stopChan)
+		rs.Start()
 		wg.Done()
 	}()
 	return dr.setDefaultRoute()
