@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 type subscriber struct {
@@ -141,6 +142,7 @@ func (r *RouteShare) startPeer(connectPeer <-chan string, helloMsg *hello, done 
 
 	// Manage listening peers
 	delSubscriber := make(chan int)
+	localRouteUpdates := make(map[string]*exportRoute)
 	for {
 		select {
 		case <-done:
@@ -159,12 +161,30 @@ func (r *RouteShare) startPeer(connectPeer <-chan string, helloMsg *hello, done 
 			subscribers = append(subscribers, s)
 			// Start a routine to listen for closing s.del
 			// send delSubscriber for the position of s when triggered
+			for _, r := range localRouteUpdates {
+				go func(r *exportRoute) {
+					select {
+					// just in case a del is pending
+					case _ = <-s.del:
+						break
+					default:
+						s.cb <- r
+					}
+				}(r)
+			}
 			go func() {
 				<-s.del
 				close(s.cb)
 				delSubscriber <- i
 			}()
 		case r := <-r.localRouteUpdate:
+			switch r.Type {
+			case syscall.RTM_NEWROUTE:
+				localRouteUpdates[r.Dst.String()] = r
+			case syscall.RTM_DELROUTE:
+				delete(localRouteUpdates, r.Dst.String())
+			}
+
 			for _, s := range subscribers {
 				select {
 				// just in case a del is pending
