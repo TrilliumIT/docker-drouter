@@ -186,6 +186,10 @@ func modifyRoute(ar *net.IPNet, action bool) error {
 				case delRoute:
 					c.delRoutesVia(nil, ar)
 				}
+				err = c.publishModifyRouteBySubnet(ar, action)
+				if err != nil {
+					c.log.WithError(err).Error("Error publishing modify routes by subnet")
+				}
 				return
 			}
 

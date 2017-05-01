@@ -404,6 +404,11 @@ func (c *container) connectEvent(drn *network) error {
 		return nil
 	}
 
+	err := c.publishModifyRoute(drn, addRoute)
+	if err != nil {
+		log.WithError(err).Error("Error publishing container specific routes")
+	}
+
 	//let's push our routes into this new container
 	if containerGateway {
 		c.log.WithFields(log.Fields{
@@ -417,38 +422,42 @@ func (c *container) connectEvent(drn *network) error {
 	}
 
 	c.log.Debug("Asynchronously adding all routes to container.")
-	err := c.addAllRoutes()
+	err = c.addAllRoutes()
 	if err != nil {
 		log.WithError(err).Error("Error adding all routes to container")
 		return err
 	}
 
-	err = c.publishModifyRoute(drn, addRoute)
-	if err != nil {
-		log.WithError(err).Error("Error publishing container specific routes")
-	}
-	return err
+	return nil
 }
 
-func (c *container) publishModifyRoute(drn *network, action bool) error {
+func (c *container) publishModifyRouteBySubnet(subnet *net.IPNet, action bool) error {
 	if len(transitNetName) <= 0 {
+		c.log.Debug("No transitnet. Skipping publish container routes")
 		return nil
 	}
-	c.log.Debug("Publishing container /32 routes")
 	addrs, err := c.getAddrs()
 	if err != nil {
 		c.logError("Failed to list container addresses.", err)
 		return err
 	}
 	for _, addr := range addrs {
-		for _, subnet := range drn.Subnets {
-			if subnet.Contains(addr.IP) {
-				n := &net.IPNet{
-					IP:   addr.IP,
-					Mask: net.CIDRMask(len(addr.IPNet.Mask), len(addr.IPNet.Mask)), // Make the mask all 1's
-				}
-				rs.ModifyRoute(n, action)
+		if subnet.Contains(addr.IP) {
+			n := &net.IPNet{
+				IP:   addr.IP,
+				Mask: net.CIDRMask(len(addr.IPNet.Mask), len(addr.IPNet.Mask)), // Make the mask all 1's
 			}
+			rs.ModifyRoute(n, action)
+		}
+	}
+	return nil
+}
+
+func (c *container) publishModifyRoute(drn *network, action bool) error {
+	for _, subnet := range drn.Subnets {
+		err := c.publishModifyRouteBySubnet(subnet, action)
+		if err != nil {
+			log.WithError(err).WithField("subnet", subnet).Error("Error publishing container route by subnet")
 		}
 	}
 	return nil
