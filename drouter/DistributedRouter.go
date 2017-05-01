@@ -332,9 +332,7 @@ func (dr *distributedRouter) mainLoop(learnNetwork chan *network,
 }
 
 func (dr *distributedRouter) start() error {
-	var err error
-
-	err = disconnectDRFromEverything()
+	err := disconnectDRFromEverything()
 	if err != nil {
 		log.Error("Failed to disconnect from existing networks.")
 		return err
@@ -378,7 +376,8 @@ func (dr *distributedRouter) start() error {
 		gwAddr := netlink.Addr{
 			IPNet: &net.IPNet{IP: dr.defaultRoute},
 		}
-		transitIPs, err := getPathIPs(gwAddr)
+		var transitIPs []net.IP
+		transitIPs, err = getPathIPs(gwAddr)
 		if err != nil || len(transitIPs) < 1 {
 			log.WithError(err).Error("Error getting transitnet IP")
 			return err
@@ -387,7 +386,10 @@ func (dr *distributedRouter) start() error {
 		rs = routeShare.NewRouteShare(transitIPs[0], 9999, 1, routeShareDone)
 		routeshareWG.Add(1)
 		go func() {
-			rs.Start()
+			err2 := rs.Start()
+			if err2 != nil {
+				log.WithError(err).Error("Error from routeshare daemon")
+			}
 			routeshareWG.Done()
 		}()
 	}

@@ -1,16 +1,12 @@
 package routeShare
 
 import (
-	log "github.com/Sirupsen/logrus"
-	"github.com/vishvananda/netlink"
 	"net"
 	"syscall"
-)
 
-type routeUpdate struct {
-	src net.Addr
-	msg []byte
-}
+	log "github.com/Sirupsen/logrus"
+	"github.com/vishvananda/netlink"
+)
 
 func delAllRoutesVia(s net.Addr) error {
 	src := s.(*net.TCPAddr).IP
@@ -23,7 +19,10 @@ func delAllRoutesVia(s net.Addr) error {
 	}
 	for _, r := range routes {
 		if r.Gw.Equal(src) {
-			netlink.RouteDel(&r)
+			err := netlink.RouteDel(&r)
+			if err != nil {
+				log.WithError(err).WithField("route", r).Error("Error deleting route")
+			}
 		}
 	}
 	return nil

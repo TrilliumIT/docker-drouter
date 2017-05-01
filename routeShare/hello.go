@@ -2,11 +2,12 @@ package routeShare
 
 import (
 	"encoding/json"
-	log "github.com/Sirupsen/logrus"
 	"net"
 	"strconv"
 	"strings"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 type hello struct {
@@ -21,6 +22,9 @@ func (r *RouteShare) startHello(connectPeer chan<- string, hc chan<- *hello, don
 	}
 
 	c, err := net.DialUDP("udp", &net.UDPAddr{IP: r.ip}, mcastAddr)
+	if err != nil {
+		return err
+	}
 
 	lAddr, _, err := net.SplitHostPort(c.LocalAddr().String())
 	if err != nil {
@@ -42,8 +46,8 @@ func (r *RouteShare) startHello(connectPeer chan<- string, hc chan<- *hello, don
 	go func(t *time.Ticker) {
 		e := json.NewEncoder(c)
 		for range t.C {
-			err := e.Encode(helloMsg)
-			if err != nil {
+			err2 := e.Encode(helloMsg)
+			if err2 != nil {
 				log.WithError(err).Error("Failed to encode hello")
 				continue
 			}
@@ -56,7 +60,10 @@ func (r *RouteShare) startHello(connectPeer chan<- string, hc chan<- *hello, don
 	}
 	go func() {
 		<-done
-		l.Close()
+		err := l.Close()
+		if err != nil {
+			log.WithError(err).Error("Error closing multicast listener")
+		}
 	}()
 
 	d := json.NewDecoder(l)

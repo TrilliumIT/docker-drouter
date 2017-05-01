@@ -179,7 +179,7 @@ func modifyRoute(ar *net.IPNet, action bool) error {
 
 				switch action {
 				case addRoute:
-					err := c.addAllRoutes()
+					err = c.addAllRoutes()
 					if err != nil {
 						c.logError("Failed to add all routes.", err)
 					}

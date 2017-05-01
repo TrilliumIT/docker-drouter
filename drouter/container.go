@@ -477,7 +477,9 @@ func (c *container) disconnectEvent(drn *network) error {
 		log.WithError(err).Error("Error publishing container specific routes")
 	}
 
-	if pIP, err := c.getPathIP(); err == nil {
+	var pIP net.IP
+	pIP, err = c.getPathIP()
+	if err == nil {
 		c.log.WithFields(log.Fields{
 			"PathIP": pIP,
 		}).Debug("Found a remaining path IP, adding all routes.")
@@ -601,7 +603,7 @@ func (c *container) getPathIP() (net.IP, error) {
 	}
 
 	if len(ips) == 0 {
-		err = fmt.Errorf("No direct connection to container.")
+		err = fmt.Errorf("no direct connection to container")
 		c.logError("No direct routes to container", err)
 		return nil, err
 	}

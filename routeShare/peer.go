@@ -2,12 +2,13 @@ package routeShare
 
 import (
 	"encoding/gob"
-	log "github.com/Sirupsen/logrus"
-	"github.com/vishvananda/netlink"
 	"net"
 	"strings"
 	"sync"
 	"syscall"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 )
 
 type subscriber struct {
@@ -24,7 +25,10 @@ func startTCPListener(peerCh chan<- *net.Conn, lAddr string, done <-chan struct{
 	}
 	go func() {
 		<-done
-		listener.Close()
+		err := listener.Close()
+		if err != nil {
+			log.WithError(err).Error("Error closing tcp listener")
+		}
 	}()
 
 	for {
@@ -165,7 +169,7 @@ func (r *RouteShare) startPeer(connectPeer <-chan string, helloMsg *hello, done 
 				go func(r *exportRoute) {
 					select {
 					// just in case a del is pending
-					case _ = <-s.del:
+					case <-s.del:
 						break
 					default:
 						s.cb <- r
@@ -188,7 +192,7 @@ func (r *RouteShare) startPeer(connectPeer <-chan string, helloMsg *hello, done 
 			for _, s := range subscribers {
 				select {
 				// just in case a del is pending
-				case _ = <-s.del:
+				case <-s.del:
 					break
 				default:
 					s.cb <- r
@@ -265,7 +269,10 @@ func peerConnections(o *peerConnOpts, done <-chan struct{}) {
 			if err != nil {
 				log.Errorf("Failed to delete all routes via %v", c.RemoteAddr())
 			}
-			c.Close()
+			err = c.Close()
+			if err != nil {
+				log.WithError(err).Error("Error closing peer connection")
+			}
 		}()
 
 		// Send updates to this peer

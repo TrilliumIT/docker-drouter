@@ -1,14 +1,16 @@
 package routeShare
 
 import (
-	log "github.com/Sirupsen/logrus"
-	"github.com/vishvananda/netlink"
 	"net"
-	//"runtime/debug"
+
 	"sync"
 	"syscall"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 )
 
+// RouteShare is the object which holds the sharing daemon. It quits when the quit channel is closed
 type RouteShare struct {
 	ip               net.IP
 	port             int
@@ -17,6 +19,7 @@ type RouteShare struct {
 	localRouteUpdate chan *exportRoute
 }
 
+// NewRouteShare returns a new RouteShare object
 func NewRouteShare(ip net.IP, port, instance int, quit <-chan struct{}) *RouteShare {
 	return &RouteShare{
 		ip:               ip,
@@ -27,6 +30,7 @@ func NewRouteShare(ip net.IP, port, instance int, quit <-chan struct{}) *RouteSh
 	}
 }
 
+// Start starts the RouteShare daemon. Blocking until quit is closed.
 func (r *RouteShare) Start() error {
 	var wg sync.WaitGroup
 
@@ -64,10 +68,13 @@ func (r *RouteShare) Start() error {
 }
 
 const (
+	// AddRoute signals a route has been added and should be published
 	AddRoute = true
+	// DelRoute signals a route has been deleted and should be unpublished
 	DelRoute = false
 )
 
+// ModifyRoute modifies a published route
 func (r *RouteShare) ModifyRoute(dst *net.IPNet, action bool) {
 	if !isDirect(dst.IP) {
 		log.WithField("dst", dst).Debug("Refusing to publish non-direct route")
@@ -81,12 +88,11 @@ func (r *RouteShare) ModifyRoute(dst *net.IPNet, action bool) {
 		log.Debug("Refusing to publish route to nil")
 		return
 	}
-	if action == AddRoute {
+	if action {
 		er.Type = syscall.RTM_NEWROUTE
 		rl.Debug("Sending route add")
-		//debug.PrintStack()
 	}
-	if action == DelRoute {
+	if !action {
 		er.Type = syscall.RTM_DELROUTE
 		log.WithField("update", er).Debug("Sending route delete")
 		rl.Debug("Sending route delete")
@@ -94,14 +100,17 @@ func (r *RouteShare) ModifyRoute(dst *net.IPNet, action bool) {
 	r.localRouteUpdate <- er
 }
 
+// AddRoute adds a published route
 func (r *RouteShare) AddRoute(dst *net.IPNet) {
 	r.ModifyRoute(dst, AddRoute)
 }
 
+// DelRoute deletes a published route
 func (r *RouteShare) DelRoute(dst *net.IPNet) {
 	r.ModifyRoute(dst, DelRoute)
 }
 
+// ShareRouteUpdate publishes a route update message
 func (r *RouteShare) ShareRouteUpdate(ru *netlink.RouteUpdate) {
 	if ru.Gw != nil {
 		// we only care about directly connected routes

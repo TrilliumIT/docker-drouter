@@ -30,7 +30,7 @@ func createNetwork(n int, dr bool) (*dockerTypes.NetworkResource, error) {
 
 	r, err := dc.NetworkCreate(bg, name, dockerTypes.NetworkCreate{
 		Options: opts,
-		IPAM: dockerNTypes.IPAM{
+		IPAM: &dockerNTypes.IPAM{
 			Config: []dockerNTypes.IPAMConfig{
 				{
 					Subnet:  fmt.Sprintf(NetIPNet, n*8),

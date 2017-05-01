@@ -225,7 +225,6 @@ func (p *p2pNetwork) createHostLink() error {
 			return err
 		}
 	}
-	err = nil
 
 	//create the link object
 	hostLinkVeth := &netlink.Veth{
