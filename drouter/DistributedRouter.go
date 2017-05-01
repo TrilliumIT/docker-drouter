@@ -366,12 +366,30 @@ func (dr *distributedRouter) start() error {
 		}
 	}
 
+	// Setup routeShare
 	routeshareWG := sync.WaitGroup{}
+	routeShareDone := make(chan struct{})
 	if len(transitNetName) > 0 {
-		err = dr.initTransitNet(routeshareWG)
+		err = dr.initTransitNet()
 		if err != nil {
 			return err
 		}
+
+		gwAddr := netlink.Addr{
+			IPNet: &net.IPNet{IP: dr.defaultRoute},
+		}
+		transitIPs, err := getPathIPs(gwAddr)
+		if err != nil || len(transitIPs) < 1 {
+			log.WithError(err).Error("Error getting transitnet IP")
+			return err
+		}
+		//TODO make these parameters
+		rs = routeShare.NewRouteShare(transitIPs[0], 9999, 1, routeShareDone)
+		routeshareWG.Add(1)
+		go func() {
+			rs.Start()
+			routeshareWG.Done()
+		}()
 	}
 
 	learnNetwork := make(chan *network)
@@ -431,9 +449,12 @@ func (dr *distributedRouter) start() error {
 		}(drn)
 	}
 
-	routeshareWG.Wait()
 	disconnectWG.Wait()
 	log.Debug("Finished all network disconnects.")
+
+	close(routeShareDone)
+	routeshareWG.Wait()
+	log.Debug("Finished closing routeShare.")
 
 	//delete the p2p link
 	if hostShortcut {
@@ -596,7 +617,7 @@ func (dr *distributedRouter) getNetwork(id string) (*network, bool) {
 	return drn, ok
 }
 
-func (dr *distributedRouter) initTransitNet(wg sync.WaitGroup) error {
+func (dr *distributedRouter) initTransitNet() error {
 	nr, err := dockerClient.NetworkInspect(context.Background(), transitNetName)
 	if err != nil {
 		log.Errorf("Failed to inspect network for transit net: %v", transitNetName)
@@ -620,20 +641,5 @@ func (dr *distributedRouter) initTransitNet(wg sync.WaitGroup) error {
 		log.Errorf("Failed to connect to transit net: %v", nr.Name)
 		return err
 	}
-	gwAddr := netlink.Addr{
-		IPNet: &net.IPNet{IP: dr.defaultRoute},
-	}
-	transitIPs, err := getPathIPs(gwAddr)
-	if err != nil || len(transitIPs) < 1 {
-		log.WithError(err).Error("Error getting transitnet IP")
-		return err
-	}
-	//TODO make these parameters
-	rs = routeShare.NewRouteShare(transitIPs[0], 9999, 1, stopChan)
-	wg.Add(1)
-	go func() {
-		rs.Start()
-		wg.Done()
-	}()
 	return dr.setDefaultRoute()
 }
