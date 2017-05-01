@@ -68,6 +68,10 @@ const (
 )
 
 func (r *RouteShare) ModifyRoute(dst *net.IPNet, action bool) {
+	if !isDirect(dst.IP) {
+		log.WithField("dst", dst).Debug("Refusing to publish non-direct route")
+		return
+	}
 	er := &exportRoute{
 		Dst: dst,
 	}

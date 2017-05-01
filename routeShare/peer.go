@@ -35,25 +35,26 @@ func startTCPListener(peerCh chan<- *net.Conn, lAddr string, done <-chan struct{
 			log.WithError(err).Error("Failed to accept listener")
 			continue
 		}
-		src := c.RemoteAddr().(*net.TCPAddr).IP
-		routes, err := netlink.RouteGet(src)
-		if err != nil {
-			log.Errorf("Failed to get route to src %v", src)
-			continue
-		}
-		direct := false
-		for _, route := range routes {
-			if route.Gw == nil {
-				direct = true
-				continue
-			}
-		}
-		if !direct {
+		if !isDirect(c.RemoteAddr().(*net.TCPAddr).IP) {
 			log.Errorf("Rejecting connection to not directly connected peer")
 			continue
 		}
 		peerCh <- &c
 	}
+}
+
+func isDirect(src net.IP) bool {
+	routes, err := netlink.RouteGet(src)
+	if err != nil {
+		log.Errorf("Failed to get route to src %v", src)
+		return false
+	}
+	for _, route := range routes {
+		if route.Gw == nil {
+			return true
+		}
+	}
+	return false
 }
 
 type procConReqOpts struct {
