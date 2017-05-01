@@ -443,11 +443,11 @@ func (c *container) publishModifyRouteBySubnet(subnet *net.IPNet, action bool) e
 	}
 	for _, addr := range addrs {
 		if subnet.Contains(addr.IP) {
-			n := &net.IPNet{
-				IP:   addr.IP,
-				Mask: net.CIDRMask(len(addr.IPNet.Mask), len(addr.IPNet.Mask)), // Make the mask all 1's
-			}
-			rs.ModifyRoute(n, action)
+			addr.IPNet.Mask = net.CIDRMask(len(addr.IPNet.Mask)*8, len(addr.IPNet.Mask)*8) // Make the mask all 1's
+			c.log.WithField("subnet", subnet).
+				WithField("addr", addr).
+				Debug("Subnet contains addr. Publishing update")
+			rs.ModifyRoute(addr.IPNet, action)
 		}
 	}
 	return nil

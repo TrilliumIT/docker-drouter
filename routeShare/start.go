@@ -4,6 +4,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"net"
+	//"runtime/debug"
 	"sync"
 	"syscall"
 )
@@ -75,13 +76,20 @@ func (r *RouteShare) ModifyRoute(dst *net.IPNet, action bool) {
 	er := &exportRoute{
 		Dst: dst,
 	}
+	rl := log.WithField("update", er).WithField("dst", er.Dst)
+	if er.Dst == nil || er.Dst.IP == nil || er.Dst.IP.Equal(net.IP{0, 0, 0, 0}) {
+		log.Debug("Refusing to publish route to nil")
+		return
+	}
 	if action == AddRoute {
 		er.Type = syscall.RTM_NEWROUTE
-		log.Debugf("Sending route add: %v", er)
+		rl.Debug("Sending route add")
+		//debug.PrintStack()
 	}
 	if action == DelRoute {
 		er.Type = syscall.RTM_DELROUTE
-		log.Debugf("Sending route delete: %v", er)
+		log.WithField("update", er).Debug("Sending route delete")
+		rl.Debug("Sending route delete")
 	}
 	r.localRouteUpdate <- er
 }
