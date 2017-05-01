@@ -218,5 +218,6 @@ func modifyRoute(ar *net.IPNet, action bool) error {
 		}()
 	}
 	modRouteWG.Wait()
+	rs.ModifyRoute(ar, action)
 	return nil
 }

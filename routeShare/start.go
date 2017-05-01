@@ -62,24 +62,32 @@ func (r *RouteShare) Start() error {
 	return err
 }
 
-func (r *RouteShare) AddRoute(dst *net.IPNet, priority int) {
+const (
+	AddRoute = true
+	DelRoute = false
+)
+
+func (r *RouteShare) ModifyRoute(dst *net.IPNet, action bool) {
 	er := &exportRoute{
-		Type:     syscall.RTM_NEWROUTE,
-		Dst:      dst,
-		Priority: priority,
+		Dst: dst,
 	}
-	log.Debugf("Sending route add: %v", er)
+	if action == AddRoute {
+		er.Type = syscall.RTM_NEWROUTE
+		log.Debugf("Sending route add: %v", er)
+	}
+	if action == DelRoute {
+		er.Type = syscall.RTM_DELROUTE
+		log.Debugf("Sending route delete: %v", er)
+	}
 	r.localRouteUpdate <- er
 }
 
-func (r *RouteShare) DelRoute(dst *net.IPNet, priority int) {
-	er := &exportRoute{
-		Type:     syscall.RTM_DELROUTE,
-		Dst:      dst,
-		Priority: priority,
-	}
-	log.Debugf("Sending route delete: %v", er)
-	r.localRouteUpdate <- er
+func (r *RouteShare) AddRoute(dst *net.IPNet) {
+	r.ModifyRoute(dst, AddRoute)
+}
+
+func (r *RouteShare) DelRoute(dst *net.IPNet) {
+	r.ModifyRoute(dst, DelRoute)
 }
 
 func (r *RouteShare) ShareRouteUpdate(ru *netlink.RouteUpdate) {
