@@ -417,7 +417,41 @@ func (c *container) connectEvent(drn *network) error {
 	}
 
 	c.log.Debug("Asynchronously adding all routes to container.")
-	return c.addAllRoutes()
+	err := c.addAllRoutes()
+	if err != nil {
+		log.WithError(err).Error("Error adding all routes to container")
+		return err
+	}
+
+	err = c.publishModifyRoute(drn, addRoute)
+	if err != nil {
+		log.WithError(err).Error("Error publishing container specific routes")
+	}
+	return err
+}
+
+func (c *container) publishModifyRoute(drn *network, action bool) error {
+	if len(transitNetName) <= 0 {
+		return nil
+	}
+	c.log.Debug("Publishing container /32 routes")
+	addrs, err := c.getAddrs()
+	if err != nil {
+		c.logError("Failed to list container addresses.", err)
+		return err
+	}
+	for _, addr := range addrs {
+		for _, subnet := range drn.Subnets {
+			if subnet.Contains(addr.IP) {
+				n := &net.IPNet{
+					IP:   addr.IP,
+					Mask: net.CIDRMask(len(addr.IPNet.Mask), len(addr.IPNet.Mask)), // Make the mask all 1's
+				}
+				rs.ModifyRoute(n, action)
+			}
+		}
+	}
+	return nil
 }
 
 // called when we detect a container has disconnected from a drouter network
@@ -427,6 +461,11 @@ func (c *container) disconnectEvent(drn *network) error {
 	}).Debug("Container disconnect event.")
 	for _, subnet := range drn.Subnets {
 		c.delRoutesVia(nil, subnet)
+	}
+
+	err := c.publishModifyRoute(drn, delRoute)
+	if err != nil {
+		log.WithError(err).Error("Error publishing container specific routes")
 	}
 
 	if pIP, err := c.getPathIP(); err == nil {
@@ -517,9 +556,8 @@ func getPathIPs(addrs ...netlink.Addr) ([]net.IP, error) {
 	return ips, nil
 }
 
-//returns a drouter IP that is on some same network as provided container
-func (c *container) getPathIPs() ([]net.IP, error) {
-	c.log.Debug("Getting path IPs")
+func (c *container) getAddrs() ([]netlink.Addr, error) {
+	c.log.Debug("Getting addresses")
 	if c.handle == nil {
 		err := fmt.Errorf("No namespace handle for container, is it running?")
 		// not necessarily an error. Happens when container stops in non-aggressive mode
@@ -527,7 +565,14 @@ func (c *container) getPathIPs() ([]net.IP, error) {
 		return nil, err
 	}
 
-	addrs, err := c.handle.AddrList(nil, netlink.FAMILY_V4)
+	return c.handle.AddrList(nil, netlink.FAMILY_V4)
+}
+
+//returns a drouter IP that is on some same network as provided container
+func (c *container) getPathIPs() ([]net.IP, error) {
+	c.log.Debug("Getting path IPs")
+
+	addrs, err := c.getAddrs()
 	if err != nil {
 		c.logError("Failed to list container addresses.", err)
 		return nil, err

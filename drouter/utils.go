@@ -218,6 +218,8 @@ func modifyRoute(ar *net.IPNet, action bool) error {
 		}()
 	}
 	modRouteWG.Wait()
-	rs.ModifyRoute(ar, action)
+	if len(transitNetName) > 0 {
+		rs.ModifyRoute(ar, action)
+	}
 	return nil
 }
