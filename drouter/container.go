@@ -49,7 +49,7 @@ func newContainerFromID(id string) (*container, error) {
 		}, nil
 	}
 
-	ch, err := netlinkHandleFromPid(cjson.State.Pid)
+	ch, _, err := netlinkHandleFromPid(cjson.State.Pid)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"container": map[string]string{
@@ -570,10 +570,9 @@ func getPathIPs(addrs ...netlink.Addr) ([]net.IP, error) {
 func (c *container) getAddrs() ([]netlink.Addr, error) {
 	c.log.Debug("Getting addresses")
 	if c.handle == nil {
-		err := fmt.Errorf("No namespace handle for container, is it running?")
-		// not necessarily an error. Happens when container stops in non-aggressive mode
-		c.log.Debug("No namespace handle for container", err)
-		return nil, err
+		// not necessarily an error. Happens when container stops
+		c.log.Debug("No namespace handle for container, is it running?")
+		return nil, nil
 	}
 
 	return c.handle.AddrList(nil, netlink.FAMILY_V4)
@@ -603,8 +602,8 @@ func (c *container) getPathIP() (net.IP, error) {
 	}
 
 	if len(ips) == 0 {
+		// Don't log an error here. An error is expected from disconnect
 		err = fmt.Errorf("no direct connection to container")
-		c.logError("No direct routes to container", err)
 		return nil, err
 	}
 

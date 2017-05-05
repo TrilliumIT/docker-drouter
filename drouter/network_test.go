@@ -5,6 +5,7 @@ import (
 	"net"
 	"testing"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -43,12 +44,12 @@ func createNetwork(n int, dr bool) (*dockerTypes.NetworkResource, error) {
 		return nil, err
 	}
 
-	err = removeAllAddrs(fmt.Sprintf("%v_%v", DrInst, n))
+	nr, err := dc.NetworkInspect(bg, r.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	nr, err := dc.NetworkInspect(bg, r.ID)
+	err = removeAllAddrs(nr.Options["com.docker.network.bridge.name"])
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +58,8 @@ func createNetwork(n int, dr bool) (*dockerTypes.NetworkResource, error) {
 }
 
 func removeAllAddrs(intName string) error {
-	hns, err := netlinkHandleFromPid(1)
+	log.WithField("intName", intName).Debug("Removing all addresses")
+	hns, _, err := netlinkHandleFromPid(1)
 	if err != nil {
 		return err
 	}
@@ -78,6 +80,7 @@ func removeAllAddrs(intName string) error {
 			return err
 		}
 	}
+	log.Debugf("%v addresses removed", len(addrs))
 
 	return nil
 }

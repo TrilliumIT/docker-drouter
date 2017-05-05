@@ -10,6 +10,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/TrilliumIT/iputil"
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
 )
 
 type p2pNetwork struct {
@@ -19,8 +20,10 @@ type p2pNetwork struct {
 	hostLinkName  string
 	selfLinkName  string
 	hostNamespace *netlink.Handle
+	hostNsHandle  netns.NsHandle
 	hostUnderlay  *net.IPNet
 	log           *log.Entry
+	hostP2PRoute  *netlink.Route
 }
 
 func newP2PNetwork(instance, p2paddr string) (*p2pNetwork, error) {
@@ -29,7 +32,7 @@ func newP2PNetwork(instance, p2paddr string) (*p2pNetwork, error) {
 		"p2paddr":  p2paddr,
 	}).Debug("Making p2p network")
 
-	hns, err := netlinkHandleFromPid(1)
+	hns, hnsh, err := netlinkHandleFromPid(1)
 	if err != nil {
 		logError("Failed to get the host's namespace.", err)
 		return nil, err
@@ -54,6 +57,7 @@ func newP2PNetwork(instance, p2paddr string) (*p2pNetwork, error) {
 		hostLinkName:  fmt.Sprintf("%v_host", instance),
 		selfLinkName:  fmt.Sprintf("%v_self", instance),
 		hostNamespace: hns,
+		hostNsHandle:  hnsh,
 		log: log.WithFields(log.Fields{
 			"p2p": map[string]interface{}{
 				"network": p2pIPNet,
@@ -77,6 +81,13 @@ func newP2PNetwork(instance, p2paddr string) (*p2pNetwork, error) {
 		p2pnet.log.Error("Failed to create veth device.")
 		return p2pnet, err
 	}
+
+	p2proutes, err := hns.RouteGet(p2pnet.selfIP)
+	if err != nil || len(p2proutes) < 1 {
+		p2pnet.log.WithError(err).Error("Error getting p2p net route from host")
+		return p2pnet, err
+	}
+	p2pnet.hostP2PRoute = &p2proutes[0]
 
 	err = p2pnet.addStaticRoutesToHost()
 	if err != nil {
@@ -106,9 +117,10 @@ func (p *p2pNetwork) addHostRoute(sn *net.IPNet) {
 		"Subnet": sn,
 	}).Debug("Adding host route to subnet.")
 	route := &netlink.Route{
-		Gw:  p.selfIP,
-		Dst: sn,
-		Src: p.hostUnderlay.IP,
+		Gw:       p.selfIP,
+		Dst:      sn,
+		Src:      p.hostUnderlay.IP,
+		Priority: p.hostP2PRoute.Priority + 10,
 	}
 	if (route.Dst.IP.To4() == nil) != (route.Gw.To4() == nil) {
 		p.log.WithFields(log.Fields{
@@ -120,13 +132,22 @@ func (p *p2pNetwork) addHostRoute(sn *net.IPNet) {
 	}
 
 	err := p.hostNamespace.RouteAdd(route)
-	if err != nil && !strings.Contains(err.Error(), "file exists") {
-		log.Error(err)
-		p.log.WithFields(log.Fields{
+	if err != nil {
+		if !strings.Contains(err.Error(), "file exists") {
+			log.Error(err)
+			p.log.WithFields(log.Fields{
+				"Destination": route.Dst,
+				"Gateway":     route.Gw,
+				"Error":       err,
+			}).Error("Failed to add host route.")
+			return
+		}
+		routes, _ := p.hostNamespace.RouteList(nil, netlink.FAMILY_ALL)
+		p.log.WithError(err).WithFields(log.Fields{
 			"Destination": route.Dst,
 			"Gateway":     route.Gw,
-			"Error":       err,
-		}).Error("Failed to add host route.")
+			"Routes":      routes,
+		}).Debug("Host route already existed.")
 		return
 	}
 	p.log.WithFields(log.Fields{
@@ -153,7 +174,7 @@ func (p *p2pNetwork) delHostRoute(sn *net.IPNet) {
 	}
 
 	err := p.hostNamespace.RouteDel(route)
-	if err != nil {
+	if err != nil && err.Error() != "no such process" { // If route doesn't exist, not a real error
 		p.log.WithFields(log.Fields{
 			"Destination": route.Dst,
 			"Gateway":     route.Gw,

@@ -64,6 +64,16 @@ func main() {
 		Name:  "transit-net",
 		Usage: "Set a transit network for drouter to always connect to. Network should have 'drouter' option set. If network has a gateway, and --host-gateway=false, drouter's default gateway will be through this network's gateway. (this option is required with --no-aggressive)",
 	}
+	var flagLocalRoutePriority = cli.IntFlag{
+		Name:  "local-route-priority",
+		Value: "100",
+		Usage: "Set the priority for routes added to local containers and the host in host-shortcut mode for networks that this drouter instance is directly connected to.",
+	}
+	var flagRemoteRoutePriority = cli.IntFlag{
+		Name:  "remote-route-priority",
+		Value: "100",
+		Usage: "A priority to be added to the local-route-priority to any routes which are provided by other drouters.",
+	}
 
 	app := cli.NewApp()
 	app.Name = "docker-drouter"

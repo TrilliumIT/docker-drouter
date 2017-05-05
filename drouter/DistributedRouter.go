@@ -311,10 +311,7 @@ func (dr *distributedRouter) mainLoop(learnNetwork chan *network,
 			eventWG.Add(1)
 			go func() {
 				defer eventWG.Done()
-				if r.Type != syscall.RTM_NEWROUTE {
-					return
-				}
-				err := dr.processRouteAddEvent(&r)
+				err := dr.processRouteEvent(&r)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"RouteEvent": r,
@@ -575,7 +572,10 @@ func (dr *distributedRouter) processDockerEvent(event dockerevents.Message, lear
 	}
 }
 
-func (dr *distributedRouter) processRouteAddEvent(ru *netlink.RouteUpdate) error {
+func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
+	if ru.Type != syscall.RTM_NEWROUTE {
+		return nil
+	}
 	if ru.Table == 255 {
 		// We don't want entries from the local routing table
 		// http://linux-ip.net/html/routing-tables.html

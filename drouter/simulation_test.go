@@ -50,7 +50,7 @@ func newSimulation(opts *DistributedRouterOptions, t *testing.T) (*simulation, e
 	assert := assert.New(t)
 	require := require.New(t)
 
-	hns, err := netlinkHandleFromPid(1)
+	hns, _, err := netlinkHandleFromPid(1)
 	if err != nil {
 		return nil, err
 	}

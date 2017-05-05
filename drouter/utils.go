@@ -25,7 +25,7 @@ func logError(msg string, err error) {
 	log.WithFields(log.Fields{"err": err}).Error(msg)
 }
 
-func netlinkHandleFromPid(pid int) (*netlink.Handle, error) {
+func netlinkHandleFromPid(pid int) (*netlink.Handle, netns.NsHandle, error) {
 	log.WithFields(log.Fields{
 		"Pid": pid,
 	}).Debug("Getting NsHandle for pid")
@@ -35,7 +35,7 @@ func netlinkHandleFromPid(pid int) (*netlink.Handle, error) {
 			"Pid":   pid,
 			"Error": err,
 		}).Error("Faild to get namespace for pid")
-		return &netlink.Handle{}, err
+		return &netlink.Handle{}, ns, err
 	}
 	nsh, err := netlink.NewHandleAt(ns)
 	if err != nil {
@@ -43,10 +43,10 @@ func netlinkHandleFromPid(pid int) (*netlink.Handle, error) {
 			"Pid":   pid,
 			"Error": err,
 		}).Error("Faild to get handle for namespace at pid")
-		return &netlink.Handle{}, err
+		return &netlink.Handle{}, ns, err
 	}
 
-	return nsh, nil
+	return nsh, ns, nil
 }
 
 func insertMasqRule() error {

@@ -134,6 +134,5 @@ func (st *simulation) assertSpecificRoutesOnN3Add() {
 	st.assert.Equal(aggressive, st.handleContainsRoute(st.c[1].handle, testNets[3], nil), "c1 should have a route to n3 if in aggressive.")
 	st.assert.Equal(aggressive, st.handleContainsRoute(st.c[2].handle, testNets[3], nil), "c2 should have a route to n3 if in aggressive.")
 	st.assert.Equal(hostShortcut && aggressive, st.handleContainsRoute(st.hns, testNets[3], nil), "host should have a route to n3 in aggressive && hostShortcut")
-
 	st.assertSpecificRoutesOnC2Start()
 }
