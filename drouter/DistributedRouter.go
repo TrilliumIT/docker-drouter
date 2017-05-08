@@ -24,18 +24,20 @@ const (
 
 var (
 	//cli options
-	ipOffset         int
-	aggressive       bool
-	hostShortcut     bool
-	containerGateway bool
-	hostGateway      bool
-	masquerade       bool
-	p2p              *p2pNetwork
-	staticRoutes     []*net.IPNet
-	transitNetName   string
-	selfContainerID  string
-	instanceName     string
-	p2pAddr          string
+	ipOffset            int
+	aggressive          bool
+	hostShortcut        bool
+	containerGateway    bool
+	hostGateway         bool
+	masquerade          bool
+	p2p                 *p2pNetwork
+	staticRoutes        []*net.IPNet
+	transitNetName      string
+	selfContainerID     string
+	instanceName        string
+	p2pAddr             string
+	localRoutePriority  int
+	remoteRoutePriority int
 
 	//other globals
 	dockerClient *dockerclient.Client
@@ -46,16 +48,18 @@ var (
 
 //DistributedRouterOptions Options for our DistributedRouter instance
 type DistributedRouterOptions struct {
-	IPOffset         int
-	Aggressive       bool
-	HostShortcut     bool
-	ContainerGateway bool
-	HostGateway      bool
-	Masquerade       bool
-	P2PAddr          string
-	StaticRoutes     []string
-	TransitNet       string
-	InstanceName     string
+	IPOffset            int
+	Aggressive          bool
+	HostShortcut        bool
+	ContainerGateway    bool
+	HostGateway         bool
+	Masquerade          bool
+	P2PAddr             string
+	StaticRoutes        []string
+	TransitNet          string
+	InstanceName        string
+	LocalRoutePriority  int
+	RemoteRoutePriority int
 }
 
 type distributedRouter struct {
@@ -77,6 +81,8 @@ func initVars(options *DistributedRouterOptions) error {
 	instanceName = options.InstanceName
 	transitNetName = options.TransitNet
 	p2pAddr = options.P2PAddr
+	localRoutePriority = options.LocalRoutePriority
+	remoteRoutePriority = options.RemoteRoutePriority
 
 	if !aggressive && len(transitNetName) == 0 {
 		log.Warn("Detected --no-aggressive and --transit-net was not found. This router may not be able to route to networks on other hosts")

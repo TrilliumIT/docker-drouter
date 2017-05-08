@@ -66,13 +66,13 @@ func main() {
 	}
 	var flagLocalRoutePriority = cli.IntFlag{
 		Name:  "local-route-priority",
-		Value: "100",
-		Usage: "Set the priority for routes added to local containers and the host in host-shortcut mode for networks that this drouter instance is directly connected to.",
+		Value: 10,
+		Usage: "Increase the metric for networks that this drouter instance is directly connected to.",
 	}
 	var flagRemoteRoutePriority = cli.IntFlag{
 		Name:  "remote-route-priority",
-		Value: "100",
-		Usage: "A priority to be added to the local-route-priority to any routes which are provided by other drouters.",
+		Value: 100,
+		Usage: "Increase the metric for any routes which are provided by other drouters.",
 	}
 
 	app := cli.NewApp()
@@ -91,6 +91,8 @@ func main() {
 		flagP2PNet,
 		flagStaticRoutes,
 		flagTransitNet,
+		flagRemoteRoutePriority,
+		flagLocalRoutePriority,
 	}
 	app.Action = Run
 	err := app.Run(os.Args)
@@ -138,16 +140,18 @@ func Run(ctx *cli.Context) error {
 	//}
 
 	opts := &drouter.DistributedRouterOptions{
-		IPOffset:         ctx.Int("ip-offset"),
-		Aggressive:       !ctx.Bool("no-aggressive"),
-		HostShortcut:     ctx.Bool("host-shortcut"),
-		ContainerGateway: ctx.Bool("container-gateway"),
-		HostGateway:      ctx.Bool("host-gateway"),
-		Masquerade:       ctx.Bool("masquerade"),
-		P2PAddr:          ctx.String("p2p-net"),
-		StaticRoutes:     ctx.StringSlice("static-route"),
-		TransitNet:       ctx.String("transit-net"),
-		InstanceName:     ctx.String("drouter-instance"),
+		IPOffset:            ctx.Int("ip-offset"),
+		Aggressive:          !ctx.Bool("no-aggressive"),
+		HostShortcut:        ctx.Bool("host-shortcut"),
+		ContainerGateway:    ctx.Bool("container-gateway"),
+		HostGateway:         ctx.Bool("host-gateway"),
+		Masquerade:          ctx.Bool("masquerade"),
+		P2PAddr:             ctx.String("p2p-net"),
+		StaticRoutes:        ctx.StringSlice("static-route"),
+		TransitNet:          ctx.String("transit-net"),
+		InstanceName:        ctx.String("drouter-instance"),
+		LocalRoutePriority:  ctx.Int("local-route-priority"),
+		RemoteRoutePriority: ctx.Int("remote-route-priority"),
 	}
 
 	quit := make(chan struct{})
