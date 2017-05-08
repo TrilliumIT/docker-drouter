@@ -66,16 +66,18 @@ func TestMain(m *testing.M) {
 
 func defaultOpts() *DistributedRouterOptions {
 	return &DistributedRouterOptions{
-		IPOffset:         0,
-		Aggressive:       true,
-		HostShortcut:     false,
-		ContainerGateway: false,
-		HostGateway:      false,
-		Masquerade:       false,
-		P2PAddr:          "172.29.255.252/30",
-		StaticRoutes:     make([]string, 0),
-		TransitNet:       "",
-		InstanceName:     DrInst,
+		IPOffset:            0,
+		Aggressive:          true,
+		HostShortcut:        false,
+		ContainerGateway:    false,
+		HostGateway:         false,
+		Masquerade:          false,
+		P2PAddr:             "172.29.255.252/30",
+		StaticRoutes:        make([]string, 0),
+		TransitNet:          "",
+		InstanceName:        DrInst,
+		LocalRoutePriority:  10,
+		RemoteRoutePriority: 100,
 	}
 }
 
