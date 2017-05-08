@@ -74,6 +74,11 @@ func main() {
 		Value: 100,
 		Usage: "Increase the metric for any routes which are provided by other drouters.",
 	}
+	var flagDrouterPort = cli.IntFlag{
+		Name:  "drouter-port",
+		Value: 9999,
+		Usage: "The port that drouter will listen on for connections to other drouters",
+	}
 
 	app := cli.NewApp()
 	app.Name = "docker-drouter"
@@ -93,6 +98,7 @@ func main() {
 		flagTransitNet,
 		flagRemoteRoutePriority,
 		flagLocalRoutePriority,
+		flagDrouterPort,
 	}
 	app.Action = Run
 	err := app.Run(os.Args)
@@ -152,6 +158,7 @@ func Run(ctx *cli.Context) error {
 		InstanceName:        ctx.String("drouter-instance"),
 		LocalRoutePriority:  ctx.Int("local-route-priority"),
 		RemoteRoutePriority: ctx.Int("remote-route-priority"),
+		DrouterPort:         ctx.Int("drouter-port"),
 	}
 
 	quit := make(chan struct{})

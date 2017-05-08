@@ -38,6 +38,7 @@ var (
 	p2pAddr             string
 	localRoutePriority  int
 	remoteRoutePriority int
+	drouterPort         int
 
 	//other globals
 	dockerClient *dockerclient.Client
@@ -60,6 +61,7 @@ type DistributedRouterOptions struct {
 	InstanceName        string
 	LocalRoutePriority  int
 	RemoteRoutePriority int
+	DrouterPort         int
 }
 
 type distributedRouter struct {
@@ -83,6 +85,7 @@ func initVars(options *DistributedRouterOptions) error {
 	p2pAddr = options.P2PAddr
 	localRoutePriority = options.LocalRoutePriority
 	remoteRoutePriority = options.RemoteRoutePriority
+	drouterPort = options.DrouterPort
 
 	if !aggressive && len(transitNetName) == 0 {
 		log.Warn("Detected --no-aggressive and --transit-net was not found. This router may not be able to route to networks on other hosts")
@@ -386,7 +389,7 @@ func (dr *distributedRouter) start() error {
 			return err
 		}
 		//TODO make these parameters
-		rs = routeShare.NewRouteShare(transitIPs[0], 9999, 1, remoteRoutePriority, routeShareDone)
+		rs = routeShare.NewRouteShare(transitIPs[0], drouterPort, instanceName, remoteRoutePriority, routeShareDone)
 		routeshareWG.Add(1)
 		go func() {
 			err2 := rs.Start()

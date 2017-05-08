@@ -14,14 +14,14 @@ import (
 type RouteShare struct {
 	ip               net.IP
 	port             int
-	instance         int
+	instance         string
 	quit             <-chan struct{}
 	localRouteUpdate chan *exportRoute
 	priority         int
 }
 
 // NewRouteShare returns a new RouteShare object
-func NewRouteShare(ip net.IP, port, instance, priority int, quit <-chan struct{}) *RouteShare {
+func NewRouteShare(ip net.IP, port int, instance string, priority int, quit <-chan struct{}) *RouteShare {
 	return &RouteShare{
 		ip:               ip,
 		port:             port,

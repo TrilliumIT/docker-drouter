@@ -12,7 +12,7 @@ import (
 
 type hello struct {
 	ListenAddr string
-	Instance   int
+	Instance   string
 }
 
 func (r *RouteShare) startHello(connectPeer chan<- string, hc chan<- *hello, done <-chan struct{}) error {
