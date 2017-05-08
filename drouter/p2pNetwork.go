@@ -112,7 +112,7 @@ func (p *p2pNetwork) remove() error {
 	return p.hostNamespace.LinkDel(hostLink)
 }
 
-func (p *p2pNetwork) addHostRoute(sn *net.IPNet) {
+func (p *p2pNetwork) addHostRoute(sn *net.IPNet, priority int) {
 	p.log.WithFields(log.Fields{
 		"Subnet": sn,
 	}).Debug("Adding host route to subnet.")
@@ -120,7 +120,7 @@ func (p *p2pNetwork) addHostRoute(sn *net.IPNet) {
 		Gw:       p.selfIP,
 		Dst:      sn,
 		Src:      p.hostUnderlay.IP,
-		Priority: p.hostP2PRoute.Priority + 10,
+		Priority: p.hostP2PRoute.Priority + priority,
 	}
 	if (route.Dst.IP.To4() == nil) != (route.Gw.To4() == nil) {
 		p.log.WithFields(log.Fields{
@@ -364,6 +364,7 @@ func (p *p2pNetwork) addUnderlayRoute() error {
 		LinkIndex: intLink.Attrs().Index,
 		Dst:       iputil.NetworkID(p.hostUnderlay),
 		Gw:        p.hostIP,
+		Priority:  p.hostP2PRoute.Priority + localRoutePriority,
 	}
 
 	log.WithFields(log.Fields{
@@ -398,7 +399,7 @@ func (p *p2pNetwork) addStaticRoutesToHost() error {
 			p.log.WithFields(log.Fields{
 				"Subnet": sr,
 			}).Debug("Asynchronously adding host route to subnet.")
-			p.addHostRoute(sr)
+			p.addHostRoute(sr, localRoutePriority)
 		}()
 	}
 

@@ -615,7 +615,7 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 	coveredByStatic := subnetCoveredByStatic(ru.Dst)
 
 	if hostShortcut && !coveredByStatic {
-		p2p.addHostRoute(ru.Dst)
+		p2p.addHostRoute(ru.Dst, ru.Priority+localRoutePriority)
 	}
 
 	return modifyRoute(ru.Dst, addRoute)
