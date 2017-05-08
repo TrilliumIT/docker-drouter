@@ -142,12 +142,6 @@ func (p *p2pNetwork) addHostRoute(sn *net.IPNet, priority int) {
 			}).Error("Failed to add host route.")
 			return
 		}
-		routes, _ := p.hostNamespace.RouteList(nil, netlink.FAMILY_ALL)
-		p.log.WithError(err).WithFields(log.Fields{
-			"Destination": route.Dst,
-			"Gateway":     route.Gw,
-			"Routes":      routes,
-		}).Debug("Host route already existed.")
 		return
 	}
 	p.log.WithFields(log.Fields{
