@@ -139,7 +139,7 @@ func (r *RouteShare) startPeer(connectPeer <-chan string, helloMsg *hello, done 
 	}
 	wg.Add(1)
 	go func() {
-		peerConnections(peerOpts, done)
+		peerConnections(peerOpts, r.priority, done)
 		log.Debug("peerconnections done")
 		wg.Done()
 	}()
@@ -210,7 +210,7 @@ type peerConnOpts struct {
 	disconnectPeer chan<- string
 }
 
-func peerConnections(o *peerConnOpts, done <-chan struct{}) {
+func peerConnections(o *peerConnOpts, priority int, done <-chan struct{}) {
 	wg := sync.WaitGroup{}
 	for {
 		var c net.Conn
@@ -319,7 +319,7 @@ func peerConnections(o *peerConnOpts, done <-chan struct{}) {
 				}
 
 				log.Debugf("Recieved update %v from %v", *er, c.RemoteAddr())
-				err = processRoute(er, c.RemoteAddr())
+				err = processRoute(er, c.RemoteAddr(), priority)
 				if err != nil {
 					log.Errorf("Failed to process route: %v", *er)
 					continue

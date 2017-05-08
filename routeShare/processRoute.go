@@ -35,7 +35,7 @@ type exportRoute struct {
 	Priority int
 }
 
-func processRoute(ru *exportRoute, s net.Addr) error {
+func processRoute(ru *exportRoute, s net.Addr, priority int) error {
 	src := s.(*net.TCPAddr).IP
 
 	_, err := netlink.AddrList(nil, netlink.FAMILY_ALL)
@@ -50,7 +50,7 @@ func processRoute(ru *exportRoute, s net.Addr) error {
 		err := netlink.RouteAdd(&netlink.Route{
 			Dst:      ru.Dst,
 			Gw:       src,
-			Priority: ru.Priority + 100,
+			Priority: ru.Priority + priority,
 		})
 		if err != nil {
 			log.WithField("update", ru).WithField("source", src).WithError(err).Error("Error adding route")

@@ -17,16 +17,18 @@ type RouteShare struct {
 	instance         int
 	quit             <-chan struct{}
 	localRouteUpdate chan *exportRoute
+	priority         int
 }
 
 // NewRouteShare returns a new RouteShare object
-func NewRouteShare(ip net.IP, port, instance int, quit <-chan struct{}) *RouteShare {
+func NewRouteShare(ip net.IP, port, instance, priority int, quit <-chan struct{}) *RouteShare {
 	return &RouteShare{
 		ip:               ip,
 		port:             port,
 		instance:         instance,
 		quit:             quit,
 		localRouteUpdate: make(chan *exportRoute),
+		priority:         priority,
 	}
 }
 

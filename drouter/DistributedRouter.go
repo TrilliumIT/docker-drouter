@@ -386,7 +386,7 @@ func (dr *distributedRouter) start() error {
 			return err
 		}
 		//TODO make these parameters
-		rs = routeShare.NewRouteShare(transitIPs[0], 9999, 1, routeShareDone)
+		rs = routeShare.NewRouteShare(transitIPs[0], 9999, 1, remoteRoutePriority, routeShareDone)
 		routeshareWG.Add(1)
 		go func() {
 			err2 := rs.Start()
