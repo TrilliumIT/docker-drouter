@@ -206,7 +206,7 @@ func (n *network) removeRoutes() {
 			n.log.WithFields(log.Fields{
 				"Subnet": sn,
 			}).Debug("Deleting routes to subnet from all containers.")
-			err := modifyRoute(sn, delRoute)
+			err := modifyRoute(sn, delRoute, 0)
 			if err != nil {
 				n.logError("Failed to delete routes", err)
 			}

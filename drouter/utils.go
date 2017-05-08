@@ -140,7 +140,7 @@ func dockerContainerSharesNetwork(dc *dockertypes.Container) bool {
 	return false
 }
 
-func modifyRoute(ar *net.IPNet, action bool) error {
+func modifyRoute(ar *net.IPNet, action bool, priority int) error {
 
 	coveredByStatic := subnetCoveredByStatic(ar)
 
@@ -215,7 +215,7 @@ func modifyRoute(ar *net.IPNet, action bool) error {
 
 			switch action {
 			case addRoute:
-				c.addRoute(ar)
+				c.addRoute(ar, priority)
 			case delRoute:
 				c.delRoutesVia(ar, nil)
 			}

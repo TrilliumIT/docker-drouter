@@ -618,7 +618,7 @@ func (dr *distributedRouter) processRouteEvent(ru *netlink.RouteUpdate) error {
 		p2p.addHostRoute(ru.Dst, ru.Priority+localRoutePriority)
 	}
 
-	return modifyRoute(ru.Dst, addRoute)
+	return modifyRoute(ru.Dst, addRoute, ru.Priority)
 }
 
 func (dr *distributedRouter) getNetwork(id string) (*network, bool) {

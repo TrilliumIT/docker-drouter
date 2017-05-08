@@ -96,7 +96,7 @@ func (c *container) addAllRoutes() error {
 		sr := r
 		go func() {
 			defer routeAddWG.Done()
-			c.addRoute(sr)
+			c.addRoute(sr, 0)
 		}()
 	}
 
@@ -158,18 +158,17 @@ Subnets:
 		}).Debug("Adding route")
 		routeAddWG.Add(1)
 		cont := c
-		nr := r
-		go func() {
+		go func(r netlink.Route) {
 			defer routeAddWG.Done()
-			cont.addRoute(nr.Dst)
-		}()
+			cont.addRoute(r.Dst, r.Priority)
+		}(r)
 	}
 
 	routeAddWG.Wait()
 	return nil
 }
 
-func (c *container) addRoute(sn *net.IPNet) {
+func (c *container) addRoute(sn *net.IPNet, priority int) {
 	c.log.WithFields(log.Fields{
 		"Subnet": sn,
 	}).Debug("Adding route to container.")
@@ -178,10 +177,10 @@ func (c *container) addRoute(sn *net.IPNet) {
 		c.logError("Failed to get path IP", err)
 		return
 	}
-	c.addRouteVia(sn, gateway)
+	c.addRouteVia(sn, gateway, priority)
 }
 
-func (c *container) addRouteVia(sn *net.IPNet, gateway net.IP) {
+func (c *container) addRouteVia(sn *net.IPNet, gateway net.IP, priority int) {
 	c.log.WithFields(log.Fields{
 		"Subnet":  sn,
 		"Gateway": gateway,
@@ -196,8 +195,9 @@ func (c *container) addRouteVia(sn *net.IPNet, gateway net.IP) {
 	}
 
 	route := &netlink.Route{
-		Dst: sn,
-		Gw:  gateway,
+		Dst:      sn,
+		Gw:       gateway,
+		Priority: priority + localRoutePriority,
 	}
 
 	//Test checks for this message. Change with caution.
@@ -259,7 +259,7 @@ func (c *container) addRouteVia(sn *net.IPNet, gateway net.IP) {
 		"Subnet":  sn,
 		"Gateway": gateway,
 	}).Debug("Retrying add route")
-	c.addRoute(sn)
+	c.addRoute(sn, priority)
 }
 
 func (c *container) delRoutes(to *net.IPNet) {
@@ -338,7 +338,7 @@ func (c *container) delRoutesVia(to, via *net.IPNet) {
 				}
 			}
 			if altgw != nil {
-				c.addRouteVia(r.Dst, altgw)
+				c.addRouteVia(r.Dst, altgw, r.Priority-localRoutePriority)
 			}
 		}
 	}
