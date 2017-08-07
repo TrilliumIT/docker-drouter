@@ -419,7 +419,6 @@ func (dr *distributedRouter) start() error {
 	ctx, ctxDone := context.WithCancel(context.Background())
 	dockerEventErr := events.Monitor(ctx, dockerClient, dockertypes.EventsOptions{}, func(event dockerevents.Message) {
 		dockerEvent <- event
-		return
 	})
 
 	routeEventDone := make(chan struct{})

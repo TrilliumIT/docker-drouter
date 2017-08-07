@@ -344,6 +344,7 @@ func (p *p2pNetwork) createHostLink() error {
 	return nil
 }
 
+/*
 func (p *p2pNetwork) addUnderlayRoute() error {
 	intLink, err := netlink.LinkByName(p.selfLinkName)
 	if err != nil {
@@ -376,6 +377,7 @@ func (p *p2pNetwork) addUnderlayRoute() error {
 	}
 	return nil
 }
+*/
 
 func (p *p2pNetwork) addStaticRoutesToHost() error {
 	var hostRouteWG sync.WaitGroup

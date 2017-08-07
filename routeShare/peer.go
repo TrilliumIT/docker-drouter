@@ -193,7 +193,6 @@ func (r *RouteShare) startPeer(connectPeer <-chan string, helloMsg *hello, done 
 				select {
 				// just in case a del is pending
 				case <-s.del:
-					break
 				default:
 					s.cb <- r
 				}
