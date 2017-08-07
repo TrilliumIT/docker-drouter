@@ -70,8 +70,19 @@ func getSelfContainerID() (string, error) {
 
 	scanner := bufio.NewScanner(cgroup)
 	for scanner.Scan() {
-		line := strings.Split(scanner.Text(), "/")
-		return line[len(line)-1], nil
+		line := strings.Split(scanner.Text(), ":")
+		if len(line) < 3 {
+			continue
+		}
+		if !strings.HasPrefix(line[2], "/docker/") {
+			continue
+		}
+		ns := strings.Split(line[2], "/")
+		id := ns[len(ns)-1]
+		if len(id) == 0 {
+			continue
+		}
+		return id, nil
 	}
 	err = fmt.Errorf("Container not found")
 	logError("Failed to get self ID", err)
