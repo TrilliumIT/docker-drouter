@@ -200,7 +200,7 @@ func syncNetworks(dr *distributedRouter, learnNetwork chan<- *network) {
 			timer.Stop()
 			return
 		case <-timer.C:
-			log.Debug("Syncing networks from docker.")
+			//log.Debug("Syncing networks from docker.")
 
 			//get all networks from docker
 			dockerNets, err := dockerClient.NetworkList(context.Background(), dockertypes.NetworkListOptions{Filters: dockerfilters.NewArgs()})
